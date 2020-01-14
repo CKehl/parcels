@@ -37,8 +37,8 @@ if __name__ == '__main__':
                                  finish=(30, -33))  # releasing on a line: the end longitude and latitude
     output_file = pset.ParticleFile(name=os.path.join(odir,"GlobCurrentParticles_expanded.nc"), outputdt=timedelta(hours=6))
     pset.execute(AdvectionRK4,
-                 runtime=timedelta(days=15),
-                 dt=timedelta(minutes=2),
+                 runtime=timedelta(days=31),
+                 dt=timedelta(minutes=1),
                  output_file=output_file,
                  recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
 #    if MPI:
