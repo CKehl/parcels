@@ -4,12 +4,18 @@ import math
 from datetime import timedelta
 from operator import attrgetter
 import os
-
+try:
+    from mpi4py import MPI
+except:
+    MPI = None
 
 def DeleteParticle(particle, fieldset, time):
     particle.delete()
 
 if __name__ == '__main__':
+    if MPI:
+        print("MPI rank: {}".format(MPI.COMM_WORLD.Get_rank()))
+
     ddir ="/scratch/ckehl/parcels_examples"
     odir = "/scratch/ckehl/experiments"
     #fieldset = FieldSet.from_parcels(os.path.join(ddir,"MovingEddies_data/moving_eddies"))
@@ -35,5 +41,15 @@ if __name__ == '__main__':
                  dt=timedelta(minutes=2),
                  output_file=output_file,
                  recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+#    if MPI:
+#        if MPI.COMM_WORLD.Get_rank()>0:
+#            output_file.close()
+#        else:
+#            output_file.export()
+#            output_file.close()
+#    else:
+#        output_file.export()
+#        output_file.close()
     output_file.export()
     output_file.close()
+    exit(0)
