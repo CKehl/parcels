@@ -1,9 +1,13 @@
-from parcels import FieldSet, ParticleSet, Variable, JITParticle, AdvectionRK4, plotTrajectoriesFile
+from parcels import FieldSet, ParticleSet, Variable, JITParticle, AdvectionRK4, ErrorCode, plotTrajectoriesFile
 import numpy as np
 import math
 from datetime import timedelta
 from operator import attrgetter
 import os
+
+
+def DeleteParticle(particle, fieldset, time):
+    particle.delete()
 
 if __name__ == '__main__':
     ddir ="/scratch/ckehl/parcels_examples"
@@ -29,5 +33,7 @@ if __name__ == '__main__':
     pset.execute(AdvectionRK4,
                  runtime=timedelta(days=15),
                  dt=timedelta(minutes=2),
-                 output_file=output_file)
+                 output_file=output_file,
+                 recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
     output_file.export()
+    output_file.close()
