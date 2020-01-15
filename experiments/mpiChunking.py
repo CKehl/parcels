@@ -23,7 +23,8 @@ if __name__=='__main__':
     odir = "/scratch/ckehl/experiments"
     func_time = []
     chunking_func_time = []
-    chunksize = [50, 100, 200, 400, 800, 1000, 1500, 2000, 2500, 4000, 'auto', False]
+    #chunksize = [50, 100, 200, 400, 800, 1000, 1500, 2000, 2500, 4000, 'auto', False]
+    chunksize = [8, 10, 16, 32, 64, 100, 128, 256, 512, 1000, 1024, 2048, 3072, 4096, 'auto', False]
     for cs in chunksize:
         tic_chunking = time.time()
         fieldset = set_cmems_fieldset(cs)
