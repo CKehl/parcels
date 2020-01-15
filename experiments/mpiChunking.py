@@ -20,6 +20,7 @@ def set_cmems_fieldset(cs):
 
 
 if __name__=='__main__':
+    odir = "/scratch/ckehl/experiments"
     func_time = []
     chunking_func_time = []
     chunksize = [50, 100, 200, 400, 800, 1000, 1500, 2000, 2500, 4000, 'auto', False]
@@ -44,4 +45,5 @@ if __name__=='__main__':
     ax.set_xlabel('field_chunksize')
     # ax.set_ylabel('Time spent in pset.execute() [s]')
     ax.set_ylabel('Time spent [s]')
-    plt.show()
+    plt.savefig(os.path.join(odir,"mpiChunking_plot.png"), dpi=300, format='png')
+    # plt.show()
