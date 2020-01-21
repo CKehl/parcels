@@ -9,6 +9,7 @@ from ctypes import Structure
 from enum import IntEnum
 
 import numpy as np
+from memory_profiler import profile
 
 from parcels.tools.converters import TimeConverter
 from parcels.tools.loggers import logger
@@ -176,6 +177,7 @@ class Grid(object):
                                              self.depth[:, :, 0:halosize, :]), axis=len(self.depth.shape) - 2)
                 assert self.depth.shape[2] == self.ydim, "Third dim must be y."
 
+    #@profile
     def computeTimeChunk(self, f, time, signdt):
         nextTime_loc = np.infty if signdt >= 0 else -np.infty
         periods = self.periods.value if isinstance(self.periods, c_int) else self.periods

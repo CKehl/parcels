@@ -11,6 +11,7 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 from py import path
+from memory_profiler import profile
 
 import parcels.tools.interpolation_utils as i_u
 from .grid import CGrid
@@ -221,7 +222,7 @@ class Field(object):
                that case Parcels deals with a better memory management during particle set execution.
                deferred_load=False is however sometimes necessary for plotting the fields.
         :param field_chunksize: size of the chunks in dask loading
-        :param netcdf_engine: engine to use for netcdf reading in xarray. Default is 'netcdf',
+        :param netcdf_engine: engine to use for netcdf reading in xarray. Default is 'netcdf4',
                but in cases where this doesn't work, setting netcdf_engine='scipy' could help
         """
         # Ensure the timestamps array is compatible with the user-provided datafiles.
@@ -892,6 +893,7 @@ class Field(object):
         self.grid.chunk_info = sum(self.grid.chunk_info, [])
         self.chunk_set = True
 
+    #@profile
     def chunk_data(self):
         if not self.chunk_set:
             self.chunk_setup()
@@ -901,6 +903,7 @@ class Field(object):
         # 2: is loaded and was touched last C call
         # 3: is loaded
         if isinstance(self.data, da.core.Array):
+            print("Field.chunk_data: using Dask\n")
             for block_id in range(len(self.grid.load_chunk)):
                 if self.grid.load_chunk[block_id] == 1 or self.grid.load_chunk[block_id] > 1 and self.data_chunks[block_id] is None:
                     block = self.get_block(block_id)
@@ -909,6 +912,7 @@ class Field(object):
                     self.data_chunks[block_id] = None
                     self.c_data_chunks[block_id] = None
         else:
+            print("Field.chunk_data: using xarray / numpy\n")
             self.grid.load_chunk[0] = 2
             self.data_chunks[0] = self.data
 
@@ -935,6 +939,10 @@ class Field(object):
             if self.grid.load_chunk[i] > 1:
                 if not self.data_chunks[i].flags.c_contiguous:
                     self.data_chunks[i] = self.data_chunks[i].copy()
+                    # ==== possible memory leak fix ==== #
+                    #tmp_data = self.data_chunks[i].copy()
+                    #self.data_chunks[i]=None
+                    #self.data_chunks[i]=tmp_data
                 self.c_data_chunks[i] = self.data_chunks[i].ctypes.data_as(POINTER(POINTER(c_float)))
             else:
                 self.c_data_chunks[i] = None
@@ -1055,6 +1063,7 @@ class Field(object):
             data[data > self.vmax] = 0
         return data
 
+    #should only be member function (instead of global generic function) if it USES member variables. It doesn't, so it should be just a global function
     def data_concatenate(self, data, data_to_concat, tindex):
         lib = np if isinstance(data_to_concat, np.ndarray) else da
         if tindex == 0:
@@ -1065,6 +1074,7 @@ class Field(object):
             data = lib.concatenate([data[:tindex, :], data_to_concat], axis=0)
         else:
             raise ValueError("data_concatenate is used for computeTimeChunk, with tindex in [0, 1, 2]")
+        print("Field.data_concatenate after loading time index {}: {}\n".format(tindex, data.shape))
         return data
 
     def advancetime(self, field_new, advanceForward):
@@ -1075,6 +1085,7 @@ class Field(object):
             self.data = np.concatenate((field_new.data[:, :, :], self.data[:-1, :, :]), 0)
             self.time = self.grid.time
 
+    #@profile
     def computeTimeChunk(self, data, tindex):
         g = self.grid
         timestamp = self.timestamps
@@ -1564,7 +1575,7 @@ class NetcdfFileBuffer(object):
         lon = self.dataset[self.dimensions['lon']]
         lat = self.dataset[self.dimensions['lat']]
         xdim = lon.size if len(lon.shape) == 1 else lon.shape[-1]
-        ydim = lat.size if len(lat.shape) == 1 else lat.shape[-2]
+        ydim = lat.size if len(lat.shape) == 1 else lat.shape[-2]       # WHY is the -2 instead of -1 ?
         self.indices['lon'] = self.indices['lon'] if 'lon' in self.indices else range(xdim)
         self.indices['lat'] = self.indices['lat'] if 'lat' in self.indices else range(ydim)
         if len(lon.shape) == 1:

@@ -21,6 +21,8 @@ from sys import version_info
 
 import numpy as np
 import numpy.ctypeslib as npct
+
+from memory_profiler import profile
 try:
     from mpi4py import MPI
 except:
@@ -215,6 +217,7 @@ class Kernel(object):
         self._lib = npct.load_library(self.lib_file, '.')
         self._function = self._lib.particle_loop
 
+    #@profile
     def execute_jit(self, pset, endtime, dt):
         """Invokes JIT engine to perform the core update loop"""
         if len(pset.particles) > 0:

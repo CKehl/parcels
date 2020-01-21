@@ -14,6 +14,8 @@ from parcels.gridset import GridSet
 from parcels.tools.converters import TimeConverter
 from parcels.tools.error import TimeExtrapolationError
 from parcels.tools.loggers import logger
+
+from memory_profiler import profile
 try:
     from mpi4py import MPI
 except:
@@ -756,6 +758,7 @@ class FieldSet(object):
                 gnew.advanced = True
             f.advancetime(fnew, advance == 1)
 
+    #@profile
     def computeTimeChunk(self, time, dt):
         """Load a chunk of three data time steps into the FieldSet.
         This is used when FieldSet uses data imported from netcdf,
@@ -811,9 +814,11 @@ class FieldSet(object):
                     f.filebuffers[2].dataset.close()
                     f.filebuffers[1:] = f.filebuffers[:2]
                     data = f.computeTimeChunk(data, 0)
+                print("Fieldset.computeTimeChunk - data.shape after loading time {}: {}\n".format(time, data.shape))
                 data = f.rescale_and_set_minmax(data)
                 if signdt >= 0:
                     data = f.reshape(data)[2:, :]
+                    print("Fieldset.computeTimeChunk - data.shape after reshaping at t={}: {}\n".format(time, data.shape))
                     if lib is da:
                         f.data = da.concatenate([f.data[1:, :], data], axis=0)
                     else:
@@ -826,6 +831,7 @@ class FieldSet(object):
                     else:
                         f.data[1:, :] = f.data[:2, :]
                         f.data[0, :] = data
+                print("Fieldset.computeTimeChunk - Field.data.shape before updating chunk status at t={}: {}\n".format(time, f.data.shape))
                 g.load_chunk = np.where(g.load_chunk == 3, 0, g.load_chunk)
                 if isinstance(f.data, da.core.Array) and len(g.load_chunk) > 0:
                     if signdt >= 0:
