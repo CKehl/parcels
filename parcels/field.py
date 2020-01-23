@@ -11,7 +11,13 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 from py import path
+
+import sys
 from memory_profiler import profile
+try:
+    from mpi4py import MPI
+except:
+    MPI = None
 
 import parcels.tools.interpolation_utils as i_u
 from .grid import CGrid
@@ -673,7 +679,7 @@ class Field(object):
             (xi, yi) = self.reconnect_bnd_indices(xi, yi, grid.xdim, grid.ydim, grid.mesh)
             it += 1
             if it > maxIterSearch:
-                print('Correct cell not found after %d iterations' % maxIterSearch)
+                #sys.stdout.write('Correct cell not found after %d iterations' % maxIterSearch)
                 raise FieldOutOfBoundError(x, y, 0, field=self)
 
         if grid.zdim > 1 and not search2D:
@@ -892,6 +898,15 @@ class Field(object):
         self.grid.chunk_info = [[len(self.nchunks)-1], list(self.nchunks[1:]), sum(list(list(ci) for ci in chunks[1:]), [])]
         self.grid.chunk_info = sum(self.grid.chunk_info, [])
         self.chunk_set = True
+        #sys.stdout.write(
+        #        "Chunk info of Field[name={}]: field.nchunks={}; shape(field.data.nchunks)={}; field.data.numblocks={}; shape(f.data)={}\n".format(
+        #            self.name, self.nchunks, (len(self.data.chunks[0]), len(self.data.chunks[1]), len(self.data.chunks[2])),
+        #            self.data.numblocks, self.data.shape))
+        #sys.stdout.write("Chunk info of Grid[field.name={}]: g.chunk_info={}; g.load_chunk={}; len(g.load_chunk)={}\n".format(self.name,
+        #                                                                                                         self.grid.chunk_info,
+        #                                                                                                         self.grid.load_chunk,
+        #                                                                                                         len(
+        #                                                                                                             self.grid.load_chunk)))
 
     #@profile
     def chunk_data(self):
@@ -903,19 +918,28 @@ class Field(object):
         # 2: is loaded and was touched last C call
         # 3: is loaded
         if isinstance(self.data, da.core.Array):
-            print("Field.chunk_data: using Dask\n")
+            #sys.stdout.write("Field.chunk_data: using Dask\n")
             for block_id in range(len(self.grid.load_chunk)):
-                if self.grid.load_chunk[block_id] == 1 or self.grid.load_chunk[block_id] > 1 and self.data_chunks[block_id] is None:
+                if self.grid.load_chunk[block_id] == 1 or (self.grid.load_chunk[block_id] > 1 and self.data_chunks[block_id] is None):
                     block = self.get_block(block_id)
-                    self.data_chunks[block_id] = np.array(self.data.blocks[(slice(self.grid.tdim),)+block])
+                    #address = (slice(0,self.grid.tdim,1),)+block
+                    address = (slice(self.grid.tdim),) + block
+                    #if MPI:
+                    #    mpi_comm = MPI.COMM_WORLD
+                    #    mpi_rank = mpi_comm.Get_rank()
+                    #    #ys.stdout.write("Requested block address processor {}: {} (grid.tdim= {})\n".format(mpi_rank, address, self.grid.tdim))  # Requested block address: (slice(None, 3, None), 0, 0)
+                    #else:
+                    #    sys.stdout.write("Requested block address: {}\n".format(address))   # Requested block address: (slice(None, 3, None), 0, 0)
+                    self.data_chunks[block_id] = np.array(self.data.blocks[address])
                 elif self.grid.load_chunk[block_id] == 0:
                     self.data_chunks[block_id] = None
                     self.c_data_chunks[block_id] = None
         else:
-            print("Field.chunk_data: using xarray / numpy\n")
+            #sys.stdout.write("Field.chunk_data: using xarray / numpy\n")
             self.grid.load_chunk[0] = 2
             self.data_chunks[0] = self.data
 
+    #@profile
     @property
     def ctypes_struct(self):
         """Returns a ctypes struct object containing all relevant
@@ -1074,7 +1098,7 @@ class Field(object):
             data = lib.concatenate([data[:tindex, :], data_to_concat], axis=0)
         else:
             raise ValueError("data_concatenate is used for computeTimeChunk, with tindex in [0, 1, 2]")
-        print("Field.data_concatenate after loading time index {}: {}\n".format(tindex, data.shape))
+        #sys.stdout.write("Field.data_concatenate after loading time index {}: {}\n".format(tindex, data.shape))
         return data
 
     def advancetime(self, field_new, advanceForward):
@@ -1085,7 +1109,8 @@ class Field(object):
             self.data = np.concatenate((field_new.data[:, :, :], self.data[:-1, :, :]), 0)
             self.time = self.grid.time
 
-    #@profile
+    fp_field_cTC=open("field_computeTimeChunk.log",'w+')
+    @profile(stream=fp_field_cTC)
     def computeTimeChunk(self, data, tindex):
         g = self.grid
         timestamp = self.timestamps
@@ -1108,6 +1133,7 @@ class Field(object):
         filebuffer.ti = (time_data <= g.time[tindex]).argmin() - 1
         if self.netcdf_engine != 'xarray':
             filebuffer.name = filebuffer.parse_name(self.filebuffername)
+        # ==== This should (for Dask) not access the data, but create a dask array of appropriate size that IS lay-allocated ==== #
         buffer_data = filebuffer.data
         lib = np if isinstance(buffer_data, np.ndarray) else da
         if len(buffer_data.shape) == 2:
@@ -1536,19 +1562,36 @@ class NetcdfFileBuffer(object):
         self.interp_method = interp_method
         self.data_full_zdim = data_full_zdim
         self.field_chunksize = field_chunksize
+        self.chunk_mapping = None
 
     def __enter__(self):
         if self.netcdf_engine == 'xarray':
             self.dataset = self.filename
             return self
+
+        init_chunk_dict = {}
+        if isinstance(self.field_chunksize, dict):
+            init_chunk_dict = self.field_chunksize
+        else:
+            if 'time' in self.dimensions:
+                init_chunk_dict[self.dimensions['time']]=1
+            if 'depth' in self.dimensions:
+                init_chunk_dict[self.dimensions['depth']]=1
+            else:
+                init_chunk_dict['depth']=1
+        # ==== In oder to utilize data chunking and dynamic loading, the open_dataset()-call needs to specify the chunks up-front ==== #
+        # ==== If this parameter is not defined, the data will be loaded directly into memory as numpy.ndarray.                   ==== #
         try:
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine)
+            #self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine)
+            self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine, chunks=init_chunk_dict)
             self.dataset['decoded'] = True
         except:
             logger.warning_once("File %s could not be decoded properly by xarray (version %s).\n         It will be opened with no decoding. Filling values might be wrongly parsed."
                                 % (self.filename, xr.__version__))
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine)
+            #self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine)
+            self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks={})
             self.dataset['decoded'] = False
+
         for inds in self.indices.values():
             if type(inds) not in [list, range]:
                 raise RuntimeError('Indices for field subsetting need to be a list')
@@ -1627,10 +1670,42 @@ class NetcdfFileBuffer(object):
 
     @property
     def data(self):
+        return self.data_access()
+
+    fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
+    @profile(stream=fd_ncdf_data_access)
+    def data_access(self):
+        if self.chunk_mapping is None:
+            self.chunk_mapping = {}
+            tdim=len(self.dataset.dims)
+            coord_dim = self.dataset.dims[self.dimensions['time']]
+            for i in range(self.dataset[self.name].ndim):
+                if self.dataset[self.name].shape[i] == coord_dim:
+                    tdim = i
+                    break
+        #    sys.stdout.write("{}({}), ".format(self.dimensions['time'], tdim))
+            for coordinate_name in self.dataset.coords:
+                if coordinate_name == self.dimensions['time']:
+                    continue
+                coord_dim = self.dataset.dims[coordinate_name]
+                coord_id = 0
+                for i in range (self.dataset[self.name].ndim):
+                    if self.dataset[self.name].shape[i] == coord_dim:
+                        coord_id=i-1 if i>tdim else i
+                        break
+        #        sys.stdout.write("{}({}), ".format(coordinate_name,coord_id))
+                self.chunk_mapping[coord_id] = 1 if coordinate_name not in self.dimensions.values() else self.field_chunksize[coordinate_name]
+        #    sys.stdout.write("\n")
+        #    sys.stdout.write("NetCDF.chunk_mapping: {}\n".format(self.chunk_mapping))
+
+        #sys.stdout.write("NetCDF engine: {}\n".format(self.netcdf_engine))
         if self.netcdf_engine == 'xarray':
             data = self.dataset
         else:
             data = self.dataset[self.name]
+        #sys.stdout.write("NetCDF dataset[{}] as {}: {}\n".format(self.name, type(data), data))
+        #sys.stdout.write("Type of actual data: {}\n".format(type(data.data)))
+        #sys.stdout.write("NetCDF indiced: {}\n".format(self.indices))
         ti = range(data.shape[0]) if self.ti is None else self.ti
         if len(data.shape) == 2:
             data = data[self.indices['lat'], self.indices['lon']]
@@ -1678,14 +1753,19 @@ class NetcdfFileBuffer(object):
             else:
                 data = data[ti, self.indices['depth'], self.indices['lat'], self.indices['lon']]
 
+        if isinstance(data, xr.DataArray):
+            data = data.data
         if self.field_chunksize is False:
             data = np.array(data)
         else:
             if isinstance(data, da.core.Array):
                 if self.field_chunksize == 'auto' and data.shape[-2:] == data.chunksize[-2:]:
-                    data = np.array(data)
-                elif self.field_chunksize != 'auto':
-                    data = data.rechunk(self.field_chunksize)
+                    #data = np.array(data)
+                    pass
+                elif self.field_chunksize != 'auto':    # why ? why here ? why at every single data access, instead of fixing that size when you open the file ?!
+                    #data = data.rechunk(self.field_chunksize)
+        #            sys.stdout.write("{}\n".format(data.shape))
+                    data = data.rechunk(self.chunk_mapping)
             else:
                 da_data = da.from_array(data, chunks=self.field_chunksize)
                 if self.field_chunksize == 'auto' and da_data.shape[-2:] == da_data.chunksize[-2:]:

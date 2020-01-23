@@ -14,6 +14,7 @@ import psutil
 import gc
 import cProfile
 import memory_profiler
+import sys
 try:
     from mpi4py import MPI
 except:
@@ -79,20 +80,22 @@ def set_cmems_fieldset(cs):
     dimensions = {'lon': 'longitude', 'lat': 'latitude', 'time': 'time'}
 
     if cs not in ['auto', False]:
-        cs = (1, cs, cs)
-    return FieldSet.from_netcdf(files, variables, dimensions, allow_time_extrapolation=True, field_chunksize=cs)
+        # cs = (1, cs, cs) - old
+        cs = {dimensions['time']: 1, dimensions['lon']: cs, dimensions['lat']: cs}
+    #return FieldSet.from_netcdf(files, variables, dimensions, allow_time_extrapolation=True, field_chunksize=cs)
+    return FieldSet.from_netcdf(files, variables, dimensions, time_periodic=delta(days=30), field_chunksize=cs)
 
 def print_field_info(fieldset):
     for f in fieldset.get_fields():
         if type(f) in [parcels.VectorField, parcels.NestedField, parcels.SummedField] or not f.grid.defer_load:
             continue
         if isinstance(f.data, daArray.core.Array):
-            print("Array of Field[name={}] is dask.Array".format(f.name))
-            print(
-                "Chunk info of Field[name={}]: field.nchunks={}; shape(field.data.nchunks)={}; field.data.numblocks={}; shape(f.data)={}".format(
+            sys.stdout.write("Array of Field[name={}] is dask.Array\n".format(f.name))
+            sys.stdout.write(
+                "Chunk info of Field[name={}]: field.nchunks={}; shape(field.data.nchunks)={}; field.data.numblocks={}; shape(f.data)={}\n".format(
                     f.name, f.nchunks, (len(f.data.chunks[0]), len(f.data.chunks[1]), len(f.data.chunks[2])),
                     f.data.numblocks, f.data.shape))
-        print("Chunk info of Grid[field.name={}]: g.chunk_info={}; g.load_chunk={}; len(g.load_chunk)={}".format(f.name,
+        sys.stdout.write("Chunk info of Grid[field.name={}]: g.chunk_info={}; g.load_chunk={}; len(g.load_chunk)={}\n".format(f.name,
                                                                                                                  f.grid.chunk_info,
                                                                                                                  f.grid.load_chunk,
                                                                                                                  len(
@@ -105,7 +108,7 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
             plot_t.append(times[i]-global_t_0)
         else:
             plot_t.append(times[i]-times[i-1])
-    mem_scaler = 1/(1024*1024*1024)
+    mem_scaler = (1*10)/(1024*1024*1024)
     plot_mem = []
     for i in range(len(memory_used)):
         #if i==0:
@@ -116,10 +119,10 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
 
     fig, ax = plt.subplots(1, 1, figsize=(15, 12))
     ax.plot(x, plot_t, 'o-', label="time_spent [s]")
-    ax.plot(x, plot_mem, 'x-', label="memory_used [GB]")
+    ax.plot(x, plot_mem, 'x-', label="memory_used [100 MB]")
     ax.plot(x, nfiledescriptors, '.-', label="open_files [#]")
     #plt.xlim([0, 256])
-    #plt.ylim([0, 60])
+    plt.ylim([0, 50])
     plt.legend()
     ax.set_xlabel('iteration')
     # ax.set_ylabel('Time spent in pset.execute() [s]')
@@ -221,6 +224,17 @@ if __name__=='__main__':
     #    global_fds_step.append(len(psutil.Process().open_files()))
     #    global_samples.append(IterationCounter.advance())
 
+    if with_ChunkInfoPrint:
+        if MPI:
+            mpi_comm = MPI.COMM_WORLD
+            mpi_comm.Barrier()
+            if mpi_comm.Get_rank() > 0:
+                pass
+            else:
+                print_field_info(fieldset)
+        else:
+            print_field_info()
+
     pset = ParticleSet(fieldset=fieldset, pclass=JITParticle,
                         lon=np.random.rand(96,1)*1e-5, lat=np.random.rand(96,1)*1e-5,
                        repeatdt=delta(hours=1))
@@ -230,7 +244,7 @@ if __name__=='__main__':
     if with_GC:
         postProcessFuncs.append(perIterGC)
     pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=1), postIterationFunctions=postProcessFuncs)
-    #pset.execute(AdvectionRK4, runtime=delta(days=1), dt=delta(hours=2))
+    #pset.execute(AdvectionRK4, runtime=delta(days=7), dt=delta(hours=2), postIterationFunctions=postProcessFuncs)
 
     if auto_chunking:
         if MPI:
@@ -278,16 +292,7 @@ if __name__=='__main__':
     #    mem_used_GB.append(mem_B_used/(1024*1024*1024))
     #    open_fds.append(fds_open)
 
-    if with_ChunkInfoPrint:
-        if MPI:
-            mpi_comm = MPI.COMM_WORLD
-            mpi_comm.Barrier()
-            if mpi_comm.Get_rank() > 0:
-                pass
-            else:
-                print_field_info(fieldset)
-        else:
-            print_field_info()
+
 
 
     if MPI:
