@@ -16,7 +16,7 @@ try:
 except:
     MPI = None
 
-with_GC = False
+with_GC = True
 
 def set_cmems_fieldset(cs):
     #ddir_head = "/data/oceanparcels/input_data"
@@ -29,7 +29,7 @@ def set_cmems_fieldset(cs):
 
     if cs not in ['auto', False]:
         cs = (1, cs, cs)
-    return FieldSet.from_netcdf(files, variables, dimensions, field_chunksize=cs)
+    return FieldSet.from_netcdf(files, variables, dimensions, allow_time_extrapolation=True, field_chunksize=cs)
 
 def print_field_info(fieldset):
     for f in fieldset.get_fields():
@@ -54,7 +54,8 @@ if __name__=='__main__':
     mem_used_GB = []
     open_fds = []
     #chunksize = [50, 100, 200, 400, 800, 1000, 1500, 2000, 2500, 4000, 'auto', False]
-    chunksize = [64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 'auto', False]
+    #chunksize = [64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 'auto', False]
+    chunksize = [64, 256, 512, 1024, 1536, 2048, 'auto']
     #chunksize = [512, 'auto']
     auto_field_size = 0
     if MPI:
@@ -68,11 +69,11 @@ if __name__=='__main__':
         fieldset = set_cmems_fieldset(cs)
         #pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=[0.000001*0,0.000001*1,0.000001*2,0.000001*3], lat=[0,0,0,0], repeatdt=delta(hours=1))
         pset = ParticleSet(fieldset=fieldset, pclass=JITParticle,
-                           lon=np.random.rand(48,1)*1e-5, lat=np.random.rand(48,1)*1e-5,
+                           lon=np.random.rand(96,1)*1e-5, lat=np.random.rand(96,1)*1e-5,
                            repeatdt=delta(hours=1))
 
         tic = time.time()
-        pset.execute(AdvectionRK4, runtime=delta(days=7), dt=delta(hours=1))
+        pset.execute(AdvectionRK4, runtime=delta(days=31), dt=delta(hours=1))
 
         if cs=='auto':
             for f in fieldset.get_fields():
@@ -105,6 +106,7 @@ if __name__=='__main__':
                 #print(mem_B_used/(1024*1024))
         else:
             mem_used_GB.append(mem_B_used/(1024*1024*1024))
+            open_fds.append(fds_open)
             #print(mem_B_used/(1024*1024))
 
         #if MPI:
@@ -124,7 +126,6 @@ if __name__=='__main__':
         if mpi_comm.Get_rank() > 0:
             pass
         else:
-            #print("auto-determined fieldsize: {}\n".format(auto_field_size))
             fig, ax = plt.subplots(1, 1, figsize=(15, 12))
             ax.plot(chunksize[:-2], func_time[:-2], 'o-', label="time_spent in pset.execute() [s]")
             ax.plot(chunksize[:-2], mem_used_GB[:-2], 'x-', label="memory_used [GB]")
@@ -139,7 +140,6 @@ if __name__=='__main__':
             #ax.set_ylabel('Time spent [s]')
             plt.savefig(os.path.join(odir, "mpiChunking_plot_MPI.png"), dpi=300, format='png')
     else:
-        #print("auto-determined fieldsize: {}\n".format(auto_field_size))
         fig, ax = plt.subplots(1, 1, figsize=(15, 12))
         ax.plot(chunksize[:-2], func_time[:-2], 'o-', label="time_spent in pset.execute() [s]")
         ax.plot(chunksize[:-2], mem_used_GB[:-2], 'x-', label="memory_used [GB]")

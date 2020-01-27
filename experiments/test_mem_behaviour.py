@@ -169,6 +169,7 @@ if __name__=='__main__':
     parser.add_argument("-b", "--backwards", dest="backwards", action='store_true', default=False, help="enable/disable running the simulation backwards")
     parser.add_argument("-d", "--defer", dest="defer", action='store_false', default=True, help="enable/disable running with deferred load (default: True)")
     parser.add_argument("-p", "--periodic", dest="periodic", action='store_true', default=False, help="enable/disable periodic wrapping (else: extrapolation)")
+    parser.add_argument("-r", "--repeatdt", dest="repeatdt", action='store_true', default=False, help="continuously add particles via repeatdt (default: False)")
     args = parser.parse_args()
 
     auto_chunking=args.auto_chunking
@@ -181,6 +182,7 @@ if __name__=='__main__':
     deferLoadFlag = args.defer
     periodicFlag=args.periodic
     backwardSimulation = args.backwards
+    repeatdtFlag=args.repeatdt
 
     #odir = "/scratch/ckehl/experiments"
     odir = "/var/scratch/experiments"
@@ -260,10 +262,16 @@ if __name__=='__main__':
 
     if backwardSimulation:
         # ==== backward simulation ==== #
-        pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart, repeatdt=delta(hours=1))
+        if repeatdtFlag:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart, repeatdt=delta(hours=1))
+        else:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart)
     else:
         # ==== forward simulation ==== #
-        pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96,1)*1e-5, lat=np.random.rand(96,1)*1e-5, repeatdt=delta(hours=1))
+        if repeatdtFlag:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96,1)*1e-5, lat=np.random.rand(96,1)*1e-5, repeatdt=delta(hours=1))
+        else:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5)
 
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
