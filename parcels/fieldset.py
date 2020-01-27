@@ -5,7 +5,7 @@ from os import path
 import dask.array as da
 import numpy as np
 
-from parcels.field import Field, DeferredArray
+from parcels.field import Field
 from parcels.field import NestedField
 from parcels.field import SummedField
 from parcels.field import VectorField
@@ -14,9 +14,6 @@ from parcels.gridset import GridSet
 from parcels.tools.converters import TimeConverter
 from parcels.tools.error import TimeExtrapolationError
 from parcels.tools.loggers import logger
-
-from memory_profiler import profile
-import sys
 try:
     from mpi4py import MPI
 except:
@@ -759,8 +756,6 @@ class FieldSet(object):
                 gnew.advanced = True
             f.advancetime(fnew, advance == 1)
 
-    fp_fieldset_cTC=open("fieldset_computeTimeChunk.log",'w+')
-    @profile(stream=fp_fieldset_cTC)
     def computeTimeChunk(self, time, dt):
         """Load a chunk of three data time steps into the FieldSet.
         This is used when FieldSet uses data imported from netcdf,
@@ -771,7 +766,6 @@ class FieldSet(object):
         """
         signdt = np.sign(dt)
         nextTime = np.infty if dt > 0 else -np.infty
-        g_update_status = {}
 
         for g in self.gridset.grids:
             g.update_status = 'not_updated'
@@ -783,9 +777,7 @@ class FieldSet(object):
                 if time == nextTime_loc and signdt != 0:
                     raise TimeExtrapolationError(time, field=f, msg='In fset.computeTimeChunk')
             nextTime = min(nextTime, nextTime_loc) if signdt >= 0 else max(nextTime, nextTime_loc)
-            g_update_status[f.name]=f.grid.update_status
 
-        #sys.stdout.write("update status grids: {}\n".format(g_update_status))
         for f in self.get_fields():
             if type(f) in [VectorField, NestedField, SummedField] or not f.grid.defer_load or f.dataFiles is None:
                 continue
@@ -800,48 +792,31 @@ class FieldSet(object):
 
                     data = f.computeTimeChunk(data, tind)
                 data = f.rescale_and_set_minmax(data)
-                if(isinstance(f.data, DeferredArray)):
-                    f.data = DeferredArray()
-                if(isinstance(f.data, da.core.Array)):
-                    f.data=da.empty(f.data.shape, f.data.dtype)
                 f.data = f.reshape(data)
                 if not f.chunk_set:
                     f.chunk_setup()
                 if len(g.load_chunk) > 0:
                     g.load_chunk = np.where(g.load_chunk == 2, 1, g.load_chunk)
                     g.load_chunk = np.where(g.load_chunk == 3, 0, g.load_chunk)
-                    for block_id in range(len(g.load_chunk)):
-                        if g.load_chunk[block_id] == 0:
-                            f.data_chunks[block_id] = None
-                            f.c_data_chunks[block_id] = None
-
             elif g.update_status == 'updated':
                 lib = np if isinstance(f.data, np.ndarray) else da
                 data = lib.empty((g.tdim, g.zdim, g.ydim-2*g.meridional_halo, g.xdim-2*g.zonal_halo), dtype=np.float32)
                 if signdt >= 0:
                     f.loaded_time_indices = [2]
-                    if f.filebuffers[0] is not None:
-                        f.filebuffers[0].dataset.close()
-                        f.filebuffers[0]=None
+                    f.filebuffers[0].dataset.close()
                     f.filebuffers[:2] = f.filebuffers[1:]
                     data = f.computeTimeChunk(data, 2)
                 else:
                     f.loaded_time_indices = [0]
-                    if f.filebuffers[2] is not None:
-                        f.filebuffers[2].dataset.close()
-                        f.filebuffers[2]=None
+                    f.filebuffers[2].dataset.close()
                     f.filebuffers[1:] = f.filebuffers[:2]
-    # ==== THIS SHOULD NOT LOAD THE DATA ==== #
                     data = f.computeTimeChunk(data, 0)
-                #sys.stdout.write("Fieldset.computeTimeChunk - data.shape after loading time {}: {}\n".format(time, data.shape))
                 data = f.rescale_and_set_minmax(data)
                 if signdt >= 0:
                     data = f.reshape(data)[2:, :]
-                    #sys.stdout.write("Fieldset.computeTimeChunk - data.shape after reshaping at t={}: {}\n".format(time, data.shape))
                     if lib is da:
                         f.data = da.concatenate([f.data[1:, :], data], axis=0)
                     else:
-                        f.data[0]=None
                         f.data[:2, :] = f.data[1:, :]
                         f.data[2, :] = data
                 else:
@@ -849,10 +824,8 @@ class FieldSet(object):
                     if lib is da:
                         f.data = da.concatenate([data, f.data[:2, :]], axis=0)
                     else:
-                        f.data[2]=None
                         f.data[1:, :] = f.data[:2, :]
                         f.data[0, :] = data
-                #sys.stdout.write("Fieldset.computeTimeChunk - Field.data.shape before updating chunk status at t={}: {}\n".format(time, f.data.shape))
                 g.load_chunk = np.where(g.load_chunk == 3, 0, g.load_chunk)
                 if isinstance(f.data, da.core.Array) and len(g.load_chunk) > 0:
                     if signdt >= 0:
@@ -864,7 +837,6 @@ class FieldSet(object):
                                     break
                                 block = f.get_block(block_id)
                                 f.data_chunks[block_id][:2] = f.data_chunks[block_id][1:]
-    # ==== THIS SHOULD LOAD THE DATA ==== #
                                 f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2])
                     else:
                         for block_id in range(len(g.load_chunk)):

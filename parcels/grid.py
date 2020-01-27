@@ -1,5 +1,3 @@
-import functools
-import sys
 from ctypes import c_double
 from ctypes import c_float
 from ctypes import c_int
@@ -11,8 +9,6 @@ from ctypes import Structure
 from enum import IntEnum
 
 import numpy as np
-import dask.array as da
-from memory_profiler import profile
 
 from parcels.tools.converters import TimeConverter
 from parcels.tools.loggers import logger
@@ -180,23 +176,17 @@ class Grid(object):
                                              self.depth[:, :, 0:halosize, :]), axis=len(self.depth.shape) - 2)
                 assert self.depth.shape[2] == self.ydim, "Third dim must be y."
 
-    #@profile
     def computeTimeChunk(self, f, time, signdt):
         nextTime_loc = np.infty if signdt >= 0 else -np.infty
         periods = self.periods.value if isinstance(self.periods, c_int) else self.periods
-        prev_time_indices = self.time
-        periodic_wrapping=False
-        #sys.stdout.write("len(grid.time) = {}\n".format(len(prev_time_indices)))
         if self.update_status == 'not_updated':
             if self.ti >= 0:
                 if (time - periods*(self.time_full[-1]-self.time_full[0]) < self.time[0] or time - periods*(self.time_full[-1]-self.time_full[0]) > self.time[2]):
                     self.ti = -1  # reset
                 elif signdt >= 0 and (time - periods*(self.time_full[-1]-self.time_full[0]) < self.time_full[0] or time - periods*(self.time_full[-1]-self.time_full[0]) >= self.time_full[-1]):
                     self.ti = -1  # reset
-                    periodic_wrapping=True
                 elif signdt < 0 and (time - periods*(self.time_full[-1]-self.time_full[0]) <= self.time_full[0] or time - periods*(self.time_full[-1]-self.time_full[0]) > self.time_full[-1]):
                     self.ti = -1  # reset
-                    periodic_wrapping=True
                 elif signdt >= 0 and time - periods*(self.time_full[-1]-self.time_full[0]) >= self.time[1] and self.ti < len(self.time_full)-3:
                     self.ti += 1
                     self.time = self.time_full[self.ti:self.ti+3]
@@ -207,38 +197,19 @@ class Grid(object):
                     self.update_status = 'updated'
             if self.ti == -1:
                 self.time = self.time_full
-                self.ti, ti_periods = f.time_index(time)
-                #self.ti, _ = f.time_index(time)
+                self.ti, _ = f.time_index(time)
                 periods = self.periods.value if isinstance(self.periods, c_int) else self.periods
-                #sys.stdout.write("ti periods({}) vs. c-periods({})\n".format(ti_periods,periods))
-                # ==== experimentally verified: python-computed period and c-computed period are equivalent ==== #
-                if signdt == -1 and self.ti == 0 and (time - periods*(self.time_full[-1]-self.time_full[0])) == self.time[0] and f.time_periodic:
+                if signdt == -1 and self.ti == 0 and (time - periods*(self.time_full[-1]-self.time_full[0])) == self.time[0]:
                     self.ti = len(self.time)-2
                     periods -= 1
-                if signdt == -1 and self.ti > 0:
+
+                if self.ti > 0 and signdt == -1:
                     self.ti -= 1
                 if self.ti >= len(self.time_full) - 2:
                     self.ti = len(self.time_full) - 3
-
-                self.time = self.time_full[self.ti:self.ti + 3]
+                self.time = self.time_full[self.ti:self.ti+3]
                 self.tdim = 3
-                # ==== this is so to avoid a 'first_updated' re-initialization for each time extrapolation step (which causes the memory to blow) ==== #
-                #self.update_status = 'first_updated'
-                if prev_time_indices is None or len(prev_time_indices)!=3 or len(prev_time_indices)!=len(self.time):
-                #    sys.stdout.write("len(grid.prev_time)={} vs len(grid.time)={}\n".format(len(prev_time_indices), len(self.time)))
-                    self.update_status = 'first_updated'
-                elif functools.reduce(lambda i, j : i and j, map(lambda m, k: m == k, self.time, prev_time_indices), True) and len(prev_time_indices)==len(self.time):
-                #    sys.stdout.write("grid.prev_time={} (n={}) vs. grid.time={} (n={})\n".format(prev_time_indices, len(prev_time_indices), self.time, len(prev_time_indices)))
-                    self.update_status = 'not_updated'
-                elif functools.reduce(lambda i, j : i and j, map(lambda m, k: m == k, self.time[:2], prev_time_indices[:2]), True) and len(prev_time_indices)==len(self.time):
-                #    sys.stdout.write("grid.prev_time={} (n={}) vs. grid.time={} (n={})\n".format(prev_time_indices, len(prev_time_indices), self.time, len(prev_time_indices)))
-                    self.update_status = 'updated'
-                else:
-                #    sys.stdout.write("ti periods({}) vs. c-periods({})\n".format(ti_periods,periods))
-                #    sys.stdout.write("grid.prev_time={} (n={}) vs. grid.time={} (n={}), period={}\n".format(prev_time_indices, len(prev_time_indices), self.time, len(prev_time_indices), periods))
-                    self.update_status = 'first_updated'
-
-                #sys.stdout.write("grid.type={} update_status={}\n".format(type(self), self.update_status))
+                self.update_status = 'first_updated'
             if signdt >= 0 and (self.ti < len(self.time_full)-3 or not f.allow_time_extrapolation):
                 nextTime_loc = self.time[2] + periods*(self.time_full[-1]-self.time_full[0])
             elif signdt == -1 and (self.ti > 0 or not f.allow_time_extrapolation):
