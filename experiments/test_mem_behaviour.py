@@ -70,7 +70,7 @@ class PerformanceLog():
             self.samples.append(self._iter)
             self._iter+=1
 
-def set_cmems_fieldset(cs):
+def set_cmems_fieldset(cs, deferLoadFlag=True, periodicFlag=False):
     #ddir_head = "/data/oceanparcels/input_data"
     ddir_head = "/data"
     ddir = os.path.join(ddir_head, "CMEMS/GLOBAL_REANALYSIS_PHY_001_030/")
@@ -82,8 +82,11 @@ def set_cmems_fieldset(cs):
     if cs not in ['auto', False]:
         # cs = (1, cs, cs) - old
         cs = {dimensions['time']: 1, dimensions['lon']: cs, dimensions['lat']: cs}
-    #return FieldSet.from_netcdf(files, variables, dimensions, allow_time_extrapolation=True, field_chunksize=cs)
-    return FieldSet.from_netcdf(files, variables, dimensions, time_periodic=delta(days=30), field_chunksize=cs)
+    if periodicFlag:
+        return FieldSet.from_netcdf(files, variables, dimensions, time_periodic=delta(days=30), deferred_load=deferLoadFlag, field_chunksize=cs)
+    else:
+        return FieldSet.from_netcdf(files, variables, dimensions, allow_time_extrapolation=True, deferred_load=deferLoadFlag, field_chunksize=cs)
+    #return FieldSet.from_netcdf(files, variables, dimensions, time_periodic=delta(days=30), field_chunksize=cs)
 
 def print_field_info(fieldset):
     for f in fieldset.get_fields():
@@ -163,6 +166,9 @@ if __name__=='__main__':
     parser.add_argument("-c", "--do-chunking", dest="do_chunking", action='store_true', default=False, help="enable/disable field chunking")
     parser.add_argument("-a", "--auto-chunking", dest="auto_chunking", action='store_true', default=False, help="enable/disable auto-chunking")
     parser.add_argument("-i", "--imageFileName", dest="imageFileName", type=str, default="mpiChunking_plot_MPI.png", help="image file name of the plot")
+    parser.add_argument("-b", "--backwards", dest="backwards", action='store_true', default=False, help="enable/disable running the simulation backwards")
+    parser.add_argument("-d", "--defer", dest="defer", action='store_false', default=True, help="enable/disable running with deferred load (default: True)")
+    parser.add_argument("-p", "--periodic", dest="periodic", action='store_true', default=False, help="enable/disable periodic wrapping (else: extrapolation)")
     args = parser.parse_args()
 
     auto_chunking=args.auto_chunking
@@ -172,6 +178,9 @@ if __name__=='__main__':
     elif do_chunking:
         field_chunksize=args.fieldsize
     imageFileName=args.imageFileName
+    deferLoadFlag = args.defer
+    periodicFlag=args.periodic
+    backwardSimulation = args.backwards
 
     #odir = "/scratch/ckehl/experiments"
     odir = "/var/scratch/experiments"
@@ -188,17 +197,19 @@ if __name__=='__main__':
         mpi_rank = mpi_comm.Get_rank()
         mpi_size = mpi_comm.Get_size()
         if mpi_rank == 0:
-            print("MPI - # workers: {}\n".format(mpi_size))
-            print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
+            #print("MPI - # workers: {}\n".format(mpi_size))
+            #print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
+            pass
     else:
-        print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
+        #print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
+        pass
 
     if do_chunking==False:
-        fieldset = set_cmems_fieldset(False)
+        fieldset = set_cmems_fieldset(False,deferLoadFlag,periodicFlag)
     elif auto_chunking:
-        fieldset = set_cmems_fieldset('auto')
+        fieldset = set_cmems_fieldset('auto',deferLoadFlag,periodicFlag)
     else:
-        fieldset = set_cmems_fieldset(field_chunksize)
+        fieldset = set_cmems_fieldset(field_chunksize,deferLoadFlag,periodicFlag)
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
@@ -235,16 +246,37 @@ if __name__=='__main__':
         else:
             print_field_info()
 
-    pset = ParticleSet(fieldset=fieldset, pclass=JITParticle,
-                        lon=np.random.rand(96,1)*1e-5, lat=np.random.rand(96,1)*1e-5,
-                       repeatdt=delta(hours=1))
+
+    simStart = None
+    for f in fieldset.get_fields():
+        if type(f) in [parcels.VectorField, parcels.NestedField, parcels.SummedField]:  # or not f.grid.defer_load
+            continue
+        else:
+            if backwardSimulation:
+                simStart=f.grid.time_full[-1]
+            else:
+                simStart = f.grid.time_full[0]
+            break
+
+    if backwardSimulation:
+        # ==== backward simulation ==== #
+        pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart, repeatdt=delta(hours=1))
+    else:
+        # ==== forward simulation ==== #
+        pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96,1)*1e-5, lat=np.random.rand(96,1)*1e-5, repeatdt=delta(hours=1))
 
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
     if with_GC:
         postProcessFuncs.append(perIterGC)
-    pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=1), postIterationFunctions=postProcessFuncs)
-    #pset.execute(AdvectionRK4, runtime=delta(days=7), dt=delta(hours=2), postIterationFunctions=postProcessFuncs)
+
+    if backwardSimulation:
+        # ==== backward simulation ==== #
+        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=-1), postIterationFunctions=postProcessFuncs)
+    else:
+        # ==== forward simulation ==== #
+        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=1), postIterationFunctions=postProcessFuncs)
+    #pset.execute(AdvectionRK4, runtime=delta(days=7), dt=delta(hours=4), postIterationFunctions=postProcessFuncs)
 
     if auto_chunking:
         if MPI:
