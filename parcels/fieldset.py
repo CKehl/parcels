@@ -5,7 +5,7 @@ from os import path
 import dask.array as da
 import numpy as np
 
-from parcels.field import Field
+from parcels.field import Field, DeferredArray
 from parcels.field import NestedField
 from parcels.field import SummedField
 from parcels.field import VectorField
@@ -771,6 +771,7 @@ class FieldSet(object):
         """
         signdt = np.sign(dt)
         nextTime = np.infty if dt > 0 else -np.infty
+        g_update_status = {}
 
         for g in self.gridset.grids:
             g.update_status = 'not_updated'
@@ -782,7 +783,9 @@ class FieldSet(object):
                 if time == nextTime_loc and signdt != 0:
                     raise TimeExtrapolationError(time, field=f, msg='In fset.computeTimeChunk')
             nextTime = min(nextTime, nextTime_loc) if signdt >= 0 else max(nextTime, nextTime_loc)
+            g_update_status[f.name]=f.grid.update_status
 
+        #sys.stdout.write("update status grids: {}\n".format(g_update_status))
         for f in self.get_fields():
             if type(f) in [VectorField, NestedField, SummedField] or not f.grid.defer_load or f.dataFiles is None:
                 continue
@@ -797,25 +800,36 @@ class FieldSet(object):
 
                     data = f.computeTimeChunk(data, tind)
                 data = f.rescale_and_set_minmax(data)
+                if(isinstance(f.data, DeferredArray)):
+                    f.data = DeferredArray()
+                if(isinstance(f.data, da.core.Array)):
+                    f.data=da.empty(f.data.shape, f.data.dtype)
                 f.data = f.reshape(data)
                 if not f.chunk_set:
                     f.chunk_setup()
                 if len(g.load_chunk) > 0:
                     g.load_chunk = np.where(g.load_chunk == 2, 1, g.load_chunk)
                     g.load_chunk = np.where(g.load_chunk == 3, 0, g.load_chunk)
+                    for block_id in range(len(g.load_chunk)):
+                        if g.load_chunk[block_id] == 0:
+                            f.data_chunks[block_id] = None
+                            f.c_data_chunks[block_id] = None
+
             elif g.update_status == 'updated':
                 lib = np if isinstance(f.data, np.ndarray) else da
                 data = lib.empty((g.tdim, g.zdim, g.ydim-2*g.meridional_halo, g.xdim-2*g.zonal_halo), dtype=np.float32)
                 if signdt >= 0:
                     f.loaded_time_indices = [2]
-                    f.filebuffers[0].dataset.close()
-                    f.filebuffers[0]=None
+                    if f.filebuffers[0] is not None:
+                        f.filebuffers[0].dataset.close()
+                        f.filebuffers[0]=None
                     f.filebuffers[:2] = f.filebuffers[1:]
                     data = f.computeTimeChunk(data, 2)
                 else:
                     f.loaded_time_indices = [0]
-                    f.filebuffers[2].dataset.close()
-                    f.filebuffers[2]=None
+                    if f.filebuffers[2] is not None:
+                        f.filebuffers[2].dataset.close()
+                        f.filebuffers[2]=None
                     f.filebuffers[1:] = f.filebuffers[:2]
     # ==== THIS SHOULD NOT LOAD THE DATA ==== #
                     data = f.computeTimeChunk(data, 0)
