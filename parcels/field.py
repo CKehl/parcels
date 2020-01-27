@@ -10,6 +10,7 @@ from ctypes import Structure
 import dask.array as da
 import numpy as np
 import xarray as xr
+from dask.sizeof import sizeof
 from py import path
 
 import sys
@@ -804,6 +805,7 @@ class Field(object):
         """
         if not self.time_periodic and not self.allow_time_extrapolation and (time < self.grid.time[0] or time > self.grid.time[-1]):
             raise TimeExtrapolationError(time, field=self)
+        #sys.stdout.write("requested time: {}\n".format(time))
         time_index = self.grid.time <= time
         if self.time_periodic:
             if time_index.all() or np.logical_not(time_index).all():
@@ -821,6 +823,10 @@ class Field(object):
             # If given time > last known field time, use
             # the last field frame without interpolation
             return (len(self.grid.time) - 1, 0)
+        elif np.logical_not(time_index).all():
+            # If given time < any time in the field, use
+            # the first field frame without interpolation
+            return (0, 0)
         else:
             return (time_index.argmin() - 1 if time_index.any() else 0, 0)
 
@@ -898,15 +904,37 @@ class Field(object):
         self.grid.chunk_info = [[len(self.nchunks)-1], list(self.nchunks[1:]), sum(list(list(ci) for ci in chunks[1:]), [])]
         self.grid.chunk_info = sum(self.grid.chunk_info, [])
         self.chunk_set = True
-        #sys.stdout.write(
-        #        "Chunk info of Field[name={}]: field.nchunks={}; shape(field.data.nchunks)={}; field.data.numblocks={}; shape(f.data)={}\n".format(
-        #            self.name, self.nchunks, (len(self.data.chunks[0]), len(self.data.chunks[1]), len(self.data.chunks[2])),
-        #            self.data.numblocks, self.data.shape))
-        #sys.stdout.write("Chunk info of Grid[field.name={}]: g.chunk_info={}; g.load_chunk={}; len(g.load_chunk)={}\n".format(self.name,
-        #                                                                                                         self.grid.chunk_info,
-        #                                                                                                         self.grid.load_chunk,
-        #                                                                                                         len(
-        #                                                                                                             self.grid.load_chunk)))
+        #sys.stdout.write("Chunk info of Field[name={}]: field.nchunks={}; shape(field.data.nchunks)={}; field.data.numblocks={}; shape(f.data)={}\n".format(
+        #            self.name, self.nchunks, (len(self.data.chunks[0]), len(self.data.chunks[1]), len(self.data.chunks[2])), self.data.numblocks, self.data.shape))
+        #sys.stdout.write("Chunk info of Grid[field.name={}]: g.chunk_info={}; g.load_chunk={}; len(g.load_chunk)={}\n".format(
+        #            self.name, self.grid.chunk_info, self.grid.load_chunk, len( self.grid.load_chunk)))
+
+    def rechunk_buffers(self):
+        if isinstance(self.data, da.core.Array):
+            chunks = self.data.chunks
+            self.nchunks = self.data.numblocks
+            npartitions = 1
+            for n in self.nchunks[1:]:
+                npartitions *= n
+        else:
+            chunks = tuple((t,) for t in self.data.shape)
+            self.nchunks = (1,) * len(self.data.shape)
+            npartitions = 1
+
+        self.data_chunks = [None] * npartitions
+        self.c_data_chunks = [None] * npartitions
+
+        self.grid.load_chunk = np.zeros(npartitions, dtype=c_int)
+
+        # self.grid.chunk_info format: number of dimensions (without tdim); number of chunks per dimensions;
+        #                         chunksizes (the 0th dim sizes for all chunk of dim[0], then so on for next dims
+        self.grid.chunk_info = [[len(self.nchunks)-1], list(self.nchunks[1:]), sum(list(list(ci) for ci in chunks[1:]), [])]
+        self.grid.chunk_info = sum(self.grid.chunk_info, [])
+        self.chunk_set = True
+        #sys.stdout.write("Chunk info of Field[name={}]: field.nchunks={}; shape(field.data.nchunks)={}; field.data.numblocks={}; shape(f.data)={}\n".format(
+        #            self.name, self.nchunks, (len(self.data.chunks[0]), len(self.data.chunks[1]), len(self.data.chunks[2])), self.data.numblocks, self.data.shape))
+        #sys.stdout.write("Chunk info of Grid[field.name={}]: g.chunk_info={}; g.load_chunk={}; len(g.load_chunk)={}\n".format(
+        #            self.name, self.grid.chunk_info, self.grid.load_chunk, len( self.grid.load_chunk)))
 
     #@profile
     def chunk_data(self):
@@ -1126,7 +1154,8 @@ class Field(object):
                                       self.netcdf_engine, timestamp=timestamp,
                                       interp_method=self.interp_method,
                                       data_full_zdim=self.data_full_zdim,
-                                      field_chunksize=self.field_chunksize)
+                                      field_chunksize=self.field_chunksize,
+                                      rechunk_callback_fields=self.rechunk_buffers)
         filebuffer.__enter__()
         time_data = filebuffer.time
         time_data = g.time_origin.reltime(time_data)
@@ -1548,10 +1577,13 @@ class NestedField(list):
             return val
 
 
+import psutil
+from dask import config as da_conf
+from dask import utils as da_utils
 class NetcdfFileBuffer(object):
     """ Class that encapsulates and manages deferred access to file data. """
     def __init__(self, filename, dimensions, indices, netcdf_engine, timestamp=None,
-                 interp_method='linear', data_full_zdim=None, field_chunksize='auto'):
+                 interp_method='linear', data_full_zdim=None, field_chunksize='auto', rechunk_callback_fields=None):
         self.filename = filename
         self.dimensions = dimensions  # Dict with dimension keys for file data
         self.indices = indices
@@ -1563,6 +1595,7 @@ class NetcdfFileBuffer(object):
         self.data_full_zdim = data_full_zdim
         self.field_chunksize = field_chunksize
         self.chunk_mapping = None
+        self.rechunk_callback_fields = rechunk_callback_fields
 
     def __enter__(self):
         if self.netcdf_engine == 'xarray':
@@ -1572,13 +1605,22 @@ class NetcdfFileBuffer(object):
         init_chunk_dict = {}
         if isinstance(self.field_chunksize, dict):
             init_chunk_dict = self.field_chunksize
-        else:
+        elif self.field_chunksize=='auto':
+            av_mem = psutil.virtual_memory().available
+            chunk_cap = av_mem * 0.25
+            if 'array.chunk-size' in da_conf.config.keys():
+                chunk_cap = da_utils.parse_bytes(da_conf.config.get('array.chunk-size'))
+            if 'lat' in self.dimensions and 'lon' in self.dimensions:
+                pDim = int(math.floor(math.sqrt(chunk_cap/np.dtype(np.float64).itemsize)))
+                init_chunk_dict[self.dimensions['lat']] = pDim
+                init_chunk_dict[self.dimensions['lon']] = pDim
             if 'time' in self.dimensions:
-                init_chunk_dict[self.dimensions['time']]=1
+                init_chunk_dict[self.dimensions['time']] = 1
             if 'depth' in self.dimensions:
                 init_chunk_dict[self.dimensions['depth']]=1
             else:
                 init_chunk_dict['depth']=1
+
         # ==== In oder to utilize data chunking and dynamic loading, the open_dataset()-call needs to specify the chunks up-front ==== #
         # ==== If this parameter is not defined, the data will be loaded directly into memory as numpy.ndarray.                   ==== #
         try:
@@ -1762,10 +1804,16 @@ class NetcdfFileBuffer(object):
                 if self.field_chunksize == 'auto' and data.shape[-2:] == data.chunksize[-2:]:
                     #data = np.array(data)
                     pass
+                elif self.field_chunksize == 'auto' and self.rechunk_callback_fieldsis is not None:
+                    data = data.rechunk(self.field_chunksize)
+                    self.rechunk_callback_fields()
                 elif self.field_chunksize != 'auto':    # why ? why here ? why at every single data access, instead of fixing that size when you open the file ?!
                     #data = data.rechunk(self.field_chunksize)
-        #            sys.stdout.write("{}\n".format(data.shape))
+                    #sys.stdout.write("{}\n".format(data.shape))
+                    # ==== I think this can be "pass" too ==== #
                     data = data.rechunk(self.chunk_mapping)
+                else:   # no-chunking case
+                    pass
             else:
                 da_data = da.from_array(data, chunks=self.field_chunksize)
                 if self.field_chunksize == 'auto' and da_data.shape[-2:] == da_data.chunksize[-2:]:
