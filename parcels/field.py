@@ -1738,21 +1738,12 @@ class NetcdfFileBuffer(object):
                     names_match_dims &= dimName in self.dataset.dims
                     names_match_coords &= dimName in self.dataset.coords
                 ref_name_array = self.dataset.dims if names_match_dims else self.dataset.coords
-
-                tdim = len(self.dataset.dims)
-                coord_dim = ref_name_array[self.dimensions['time']]
-                for i in range(self.dataset[self.name].ndim):
-                    if self.dataset[self.name].shape[i] == coord_dim:
-                        tdim = i
-                        break
                 for coordinate_name in ref_name_array:
-                    if coordinate_name == self.dimensions['time']:
-                        continue
                     coord_dim = ref_name_array[coordinate_name] if names_match_dims else ref_name_array[coordinate_name].shape[0]
                     coord_id = 0
                     for i in range(self.dataset[self.name].ndim):
                         if self.dataset[self.name].shape[i] == coord_dim:
-                            coord_id = i-1 if i > tdim else i
+                            coord_id = i
                             break
                     if coordinate_name in self.dimensions.values() and coordinate_name in self.field_chunksize:
                         self.chunk_mapping[coord_id] = self.field_chunksize[coordinate_name]
