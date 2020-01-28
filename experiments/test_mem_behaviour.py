@@ -157,6 +157,9 @@ def perIterGC():
     gc.collect()
 
 def DeleteParticle(particle, fieldset, time):
+    particle.delete()
+
+def RenewParticle(particle, fieldset, time):
     particle.lat = np.random.rand() * 1e-5
     particle.lon = np.random.rand() * 1e-5
 
@@ -174,6 +177,7 @@ if __name__=='__main__':
     parser.add_argument("-d", "--defer", dest="defer", action='store_false', default=True, help="enable/disable running with deferred load (default: True)")
     parser.add_argument("-p", "--periodic", dest="periodic", action='store_true', default=False, help="enable/disable periodic wrapping (else: extrapolation)")
     parser.add_argument("-r", "--repeatdt", dest="repeatdt", action='store_true', default=False, help="continuously add particles via repeatdt (default: False)")
+    parser.add_argument("-t", "--time_in_days", dest="time_in_days", type=int, default=33, help="runtime in days (default: 33)")
     args = parser.parse_args()
 
     auto_chunking=args.auto_chunking
@@ -187,6 +191,7 @@ if __name__=='__main__':
     periodicFlag=args.periodic
     backwardSimulation = args.backwards
     repeatdtFlag=args.repeatdt
+    time_in_days = args.time_in_days
 
     #odir = "/scratch/ckehl/experiments"
     odir = "/var/scratch/experiments"
@@ -285,10 +290,10 @@ if __name__=='__main__':
 
     if backwardSimulation:
         # ==== backward simulation ==== #
-        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=-1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationFunctions=postProcessFuncs)
+        pset.execute(AdvectionRK4, runtime=delta(days=time_in_days), dt=delta(hours=-1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: RenewParticle}, postIterationFunctions=postProcessFuncs)
     else:
         # ==== forward simulation ==== #
-        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationFunctions=postProcessFuncs)
+        pset.execute(AdvectionRK4, runtime=delta(days=time_in_days), dt=delta(hours=1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: RenewParticle}, postIterationFunctions=postProcessFuncs)
     #pset.execute(AdvectionRK4, runtime=delta(days=7), dt=delta(hours=4), postIterationFunctions=postProcessFuncs)
     output_file.close()
 
