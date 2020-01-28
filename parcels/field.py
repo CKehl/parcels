@@ -1725,30 +1725,43 @@ class NetcdfFileBuffer(object):
     @profile(stream=fd_ncdf_data_access)
     def data_access(self):
         if self.chunk_mapping is None and self.field_chunksize not in ['auto', False]:
-        #    sys.stdout.write("NetCDF dataset: {}\n".format(self.dataset))
             self.chunk_mapping = {}
             if(isinstance(self.field_chunksize, tuple)):
                 for i in range(len(self.field_chunksize)):
                     self.chunk_mapping[i] = self.field_chunksize[i]
             else:
-                ref_name_array = None
-                names_match_dims = True
-                names_match_coords = True
-                for dimName in self.dimensions:
-                    names_match_dims &= dimName in self.dataset.dims
-                    names_match_coords &= dimName in self.dataset.coords
-                ref_name_array = self.dataset.dims if names_match_dims else self.dataset.coords
-                for coordinate_name in ref_name_array:
-                    coord_dim = ref_name_array[coordinate_name] if names_match_dims else ref_name_array[coordinate_name].shape[0]
-                    coord_id = 0
-                    for i in range(self.dataset[self.name].ndim):
-                        if self.dataset[self.name].shape[i] == coord_dim:
-                            coord_id = i
-                            break
-                    if coordinate_name in self.dimensions.values() and coordinate_name in self.field_chunksize:
-                        self.chunk_mapping[coord_id] = self.field_chunksize[coordinate_name]
+                #ref_name_array = None
+                #names_match_dims = True
+                #names_match_coords = True
+                #for dimName in self.dimensions:
+                #    names_match_dims &= dimName in self.dataset.dims
+                #    names_match_coords &= dimName in self.dataset.coords
+                #ref_name_array = self.dataset.dims if names_match_dims else self.dataset.coords
+                dim_max_index = len(self.dimensions)-1
+                dim_index = 0
+                for dim_name in self.dimensions:
+                    coord_id = dim_max_index - dim_index
+                    if self.dimensions[dim_name] in self.field_chunksize:
+                        self.chunk_mapping[coord_id] = self.field_chunksize[self.dimensions[dim_name]]
                     else:
                         self.chunk_mapping[coord_id] = 1
+                    dim_index += 1
+                #for coordinate_name in ref_name_array:
+                #    coord_dim = ref_name_array[coordinate_name] if names_match_dims else ref_name_array[coordinate_name].shape[0]
+                #    coord_id = 0
+                #    for dimName in self.dimensions:
+                #        if coordinate_name == dimName:
+                #            break
+                #        else:
+                #            coord_id += 1
+                #    for i in range(self.dataset[self.name].ndim):
+                #        if self.dataset[self.name].shape[i] == coord_dim:
+                #            coord_id = i
+                #            break
+                #    if coordinate_name in self.dimensions.values() and coordinate_name in self.field_chunksize:
+                #        self.chunk_mapping[coord_id] = self.field_chunksize[coordinate_name]
+                #    else:
+                #        self.chunk_mapping[coord_id] = 1
         data = self.dataset[self.name]
         ti = range(data.shape[0]) if self.ti is None else self.ti
         if len(data.shape) == 2:
