@@ -185,7 +185,6 @@ class Grid(object):
         nextTime_loc = np.infty if signdt >= 0 else -np.infty
         periods = self.periods.value if isinstance(self.periods, c_int) else self.periods
         prev_time_indices = self.time
-        periodic_wrapping=False
         #sys.stdout.write("len(grid.time) = {}\n".format(len(prev_time_indices)))
         if self.update_status == 'not_updated':
             if self.ti >= 0:
@@ -193,10 +192,8 @@ class Grid(object):
                     self.ti = -1  # reset
                 elif signdt >= 0 and (time - periods*(self.time_full[-1]-self.time_full[0]) < self.time_full[0] or time - periods*(self.time_full[-1]-self.time_full[0]) >= self.time_full[-1]):
                     self.ti = -1  # reset
-                    periodic_wrapping=True
                 elif signdt < 0 and (time - periods*(self.time_full[-1]-self.time_full[0]) <= self.time_full[0] or time - periods*(self.time_full[-1]-self.time_full[0]) > self.time_full[-1]):
                     self.ti = -1  # reset
-                    periodic_wrapping=True
                 elif signdt >= 0 and time - periods*(self.time_full[-1]-self.time_full[0]) >= self.time[1] and self.ti < len(self.time_full)-3:
                     self.ti += 1
                     self.time = self.time_full[self.ti:self.ti+3]
@@ -220,7 +217,7 @@ class Grid(object):
                 if self.ti >= len(self.time_full) - 2:
                     self.ti = len(self.time_full) - 3
 
-                self.time = self.time_full[self.ti:self.ti + 3]
+                self.time = self.time_full[self.ti:self.ti+3]
                 self.tdim = 3
                 # ==== this is so to avoid a 'first_updated' re-initialization for each time extrapolation step (which causes the memory to blow) ==== #
                 #self.update_status = 'first_updated'

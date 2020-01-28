@@ -1,4 +1,4 @@
-from parcels import FieldSet, ParticleSet, JITParticle, AdvectionRK4, Kernel
+from parcels import FieldSet, ParticleSet, JITParticle, AdvectionRK4, Kernel, ErrorCode
 from datetime import timedelta as delta
 from argparse import ArgumentParser
 import numpy as np
@@ -156,6 +156,10 @@ def perIterGC():
     import gc
     gc.collect()
 
+def DeleteParticle(particle, fieldset, time):
+    particle.lat = np.random.rand() * 1e-5
+    particle.lon = np.random.rand() * 1e-5
+
 if __name__=='__main__':
     field_chunksize = 1
     do_chunking = False
@@ -169,6 +173,7 @@ if __name__=='__main__':
     parser.add_argument("-b", "--backwards", dest="backwards", action='store_true', default=False, help="enable/disable running the simulation backwards")
     parser.add_argument("-d", "--defer", dest="defer", action='store_false', default=True, help="enable/disable running with deferred load (default: True)")
     parser.add_argument("-p", "--periodic", dest="periodic", action='store_true', default=False, help="enable/disable periodic wrapping (else: extrapolation)")
+    parser.add_argument("-r", "--repeatdt", dest="repeatdt", action='store_true', default=False, help="continuously add particles via repeatdt (default: False)")
     args = parser.parse_args()
 
     auto_chunking=args.auto_chunking
@@ -181,6 +186,7 @@ if __name__=='__main__':
     deferLoadFlag = args.defer
     periodicFlag=args.periodic
     backwardSimulation = args.backwards
+    repeatdtFlag=args.repeatdt
 
     #odir = "/scratch/ckehl/experiments"
     odir = "/var/scratch/experiments"
@@ -260,11 +266,18 @@ if __name__=='__main__':
 
     if backwardSimulation:
         # ==== backward simulation ==== #
-        pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart, repeatdt=delta(hours=1))
+        if repeatdtFlag:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart, repeatdt=delta(hours=1))
+        else:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(4096, 1) * 1e-5, lat=np.random.rand(4096, 1) * 1e-5, time=simStart)
     else:
         # ==== forward simulation ==== #
-        pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96,1)*1e-5, lat=np.random.rand(96,1)*1e-5, repeatdt=delta(hours=1))
+        if repeatdtFlag:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart, repeatdt=delta(hours=1))
+        else:
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(4096, 1) * 1e-5, lat=np.random.rand(4096, 1) * 1e-5, time=simStart)
 
+    output_file = pset.ParticleFile(name=os.path.join(odir,"test_mem_behaviour.nc"), outputdt=delta(hours=1))
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
     if with_GC:
@@ -272,11 +285,12 @@ if __name__=='__main__':
 
     if backwardSimulation:
         # ==== backward simulation ==== #
-        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=-1), postIterationFunctions=postProcessFuncs)
+        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=-1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationFunctions=postProcessFuncs)
     else:
         # ==== forward simulation ==== #
-        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=1), postIterationFunctions=postProcessFuncs)
+        pset.execute(AdvectionRK4, runtime=delta(days=33), dt=delta(hours=1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationFunctions=postProcessFuncs)
     #pset.execute(AdvectionRK4, runtime=delta(days=7), dt=delta(hours=4), postIterationFunctions=postProcessFuncs)
+    output_file.close()
 
     if auto_chunking:
         if MPI:
