@@ -12,15 +12,15 @@ import parcels
 import psutil
 
 import gc
-import cProfile
-import memory_profiler
+#import cProfile
+#import memory_profiler
 import sys
 try:
     from mpi4py import MPI
 except:
     MPI = None
 
-with_GC = False
+with_GC = True
 with_ChunkInfoPrint = False
 
 global_t_0 = 0
@@ -153,7 +153,6 @@ def LogMemTimeFds():
         global_fds_step.append(len(psutil.Process().open_files()))
 
 def perIterGC():
-    import gc
     gc.collect()
 
 def DeleteParticle(particle, fieldset, time):

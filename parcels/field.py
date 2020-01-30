@@ -16,7 +16,7 @@ import xarray as xr
 from py import path
 
 import sys
-from memory_profiler import profile
+#from memory_profiler import profile
 
 import parcels.tools.interpolation_utils as i_u
 from .grid import CGrid
@@ -949,7 +949,6 @@ class Field(object):
             self.grid.load_chunk[0] = 2
             self.data_chunks[0] = self.data
 
-    #@profile
     @property
     def ctypes_struct(self):
         """Returns a ctypes struct object containing all relevant
@@ -1115,8 +1114,8 @@ class Field(object):
             self.data = np.concatenate((field_new.data[:, :, :], self.data[:-1, :, :]), 0)
             self.time = self.grid.time
 
-    fp_field_cTC=open("field_computeTimeChunk.log",'w+')
-    @profile(stream=fp_field_cTC)
+    #fp_field_cTC=open("field_computeTimeChunk.log",'w+')
+    #@profile(stream=fp_field_cTC)
     def computeTimeChunk(self, data, tindex):
         g = self.grid
         timestamp = self.timestamps
@@ -1741,8 +1740,8 @@ class NetcdfFileBuffer(object):
     def data(self):
         return self.data_access()
 
-    fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
-    @profile(stream=fd_ncdf_data_access)
+    #fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
+    #@profile(stream=fd_ncdf_data_access)
     def data_access(self):
         if self.chunk_mapping is None and self.field_chunksize not in ['auto', False]:
             self.chunk_mapping = {}

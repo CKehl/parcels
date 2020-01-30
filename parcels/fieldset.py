@@ -15,8 +15,8 @@ from parcels.tools.converters import TimeConverter, convert_xarray_time_units
 from parcels.tools.error import TimeExtrapolationError
 from parcels.tools.loggers import logger
 
-from memory_profiler import profile
 import sys
+#from memory_profiler import profile
 try:
     from mpi4py import MPI
 except:
@@ -754,8 +754,8 @@ class FieldSet(object):
                 gnew.advanced = True
             f.advancetime(fnew, advance == 1)
 
-    fp_fieldset_cTC=open("fieldset_computeTimeChunk.log",'w+')
-    @profile(stream=fp_fieldset_cTC)
+    #fp_fieldset_cTC=open("fieldset_computeTimeChunk.log",'w+')
+    #@profile(stream=fp_fieldset_cTC)
     def computeTimeChunk(self, time, dt):
         """Load a chunk of three data time steps into the FieldSet.
         This is used when FieldSet uses data imported from netcdf,

@@ -22,7 +22,7 @@ from sys import version_info
 import numpy as np
 import numpy.ctypeslib as npct
 
-from memory_profiler import profile
+#from memory_profiler import profile
 try:
     from mpi4py import MPI
 except:

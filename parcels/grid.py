@@ -12,7 +12,7 @@ from enum import IntEnum
 
 import numpy as np
 import dask.array as da
-from memory_profiler import profile
+#from memory_profiler import profile
 
 from parcels.tools.converters import TimeConverter
 from parcels.tools.loggers import logger

@@ -8,7 +8,7 @@ import numpy as np
 import xarray as xr
 import progressbar
 
-from memory_profiler import profile
+#from memory_profiler import profile
 
 from parcels.compiler import GNUCompiler
 from parcels.field import NestedField
