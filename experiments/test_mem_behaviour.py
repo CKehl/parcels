@@ -20,7 +20,7 @@ try:
 except:
     MPI = None
 
-with_GC = True
+with_GC = False
 with_ChunkInfoPrint = False
 
 global_t_0 = 0
@@ -111,7 +111,8 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
             plot_t.append(times[i]-global_t_0)
         else:
             plot_t.append(times[i]-times[i-1])
-    mem_scaler = (1*10)/(1024*1024*1024)
+    #mem_scaler = (1*10)/(1024*1024*1024)
+    mem_scaler = 1 / (1024 * 1024 * 1024)
     plot_mem = []
     for i in range(len(memory_used)):
         #if i==0:
@@ -123,9 +124,9 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
     fig, ax = plt.subplots(1, 1, figsize=(15, 12))
     ax.plot(x, plot_t, 'o-', label="time_spent [s]")
     ax.plot(x, plot_mem, 'x-', label="memory_used [100 MB]")
-    ax.plot(x, nfiledescriptors, '.-', label="open_files [#]")
+    #ax.plot(x, nfiledescriptors, '.-', label="open_files [#]")
     #plt.xlim([0, 256])
-    plt.ylim([0, 50])
+    #plt.ylim([0, 50])
     plt.legend()
     ax.set_xlabel('iteration')
     # ax.set_ylabel('Time spent in pset.execute() [s]')
