@@ -16,7 +16,7 @@ import xarray as xr
 from py import path
 
 import sys
-#from memory_profiler import profile
+from memory_profiler import profile
 
 import parcels.tools.interpolation_utils as i_u
 from .grid import CGrid
@@ -275,7 +275,7 @@ class Field(object):
             else:
                 raise RuntimeError('interp_method is a dictionary but %s is not in it' % variable[0])
 
-        with NetcdfFileBuffer(lonlat_filename, dimensions, indices, netcdf_engine, field_chunksize=False) as filebuffer:
+        with NetcdfFileBuffer(lonlat_filename, dimensions, indices, netcdf_engine, field_chunksize=False, lock_file=False) as filebuffer:
             lon, lat = filebuffer.read_lonlat
             indices = filebuffer.indices
             # Check if parcels_mesh has been explicitly set in file
@@ -283,7 +283,7 @@ class Field(object):
                 mesh = filebuffer.dataset.attrs['parcels_mesh']
 
         if 'depth' in dimensions:
-            with NetcdfFileBuffer(depth_filename, dimensions, indices, netcdf_engine, interp_method=interp_method, field_chunksize=False) as filebuffer:
+            with NetcdfFileBuffer(depth_filename, dimensions, indices, netcdf_engine, interp_method=interp_method, field_chunksize=False, lock_file=False) as filebuffer:
                 filebuffer.name = filebuffer.parse_name(variable[1])
                 depth = filebuffer.read_depth
                 data_full_zdim = filebuffer.data_full_zdim
@@ -311,8 +311,7 @@ class Field(object):
                 timeslices = []
                 dataFiles = []
                 for fname in data_filenames:
-                    with NetcdfFileBuffer(fname, dimensions, indices, netcdf_engine,
-                                          field_chunksize=False) as filebuffer:
+                    with NetcdfFileBuffer(fname, dimensions, indices, netcdf_engine, field_chunksize=False) as filebuffer:
                         ftime = filebuffer.time
                         timeslices.append(ftime)
                         dataFiles.append([fname] * len(ftime))
@@ -1557,7 +1556,7 @@ class NestedField(list):
 class NetcdfFileBuffer(object):
     """ Class that encapsulates and manages deferred access to file data. """
     def __init__(self, filename, dimensions, indices, netcdf_engine, timestamp=None,
-                 interp_method='linear', data_full_zdim=None, field_chunksize='auto', rechunk_callback_fields=None):
+                 interp_method='linear', data_full_zdim=None, field_chunksize='auto', rechunk_callback_fields=None, lock_file=True):
         self.filename = filename
         self.dimensions = dimensions  # Dict with dimension keys for file data
         self.indices = indices
@@ -1570,6 +1569,8 @@ class NetcdfFileBuffer(object):
         self.field_chunksize = field_chunksize
         self.chunk_mapping = None
         self.rechunk_callback_fields = rechunk_callback_fields
+        self.chunking_finalized = False
+        self.lock_file = lock_file
 
     def __enter__(self):
         if self.netcdf_engine == 'xarray':
@@ -1578,12 +1579,19 @@ class NetcdfFileBuffer(object):
 
         init_chunk_dict = self._get_initial_chunk_dictionary()
         try:
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine, chunks=init_chunk_dict)
+            # unfortunately we need to do if-else here, cause the lock-parameter is either False or a Lock-object (we we rather want to have auto-managed)
+            if self.lock_file:
+                self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine, chunks=init_chunk_dict)
+            else:
+                self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine, chunks=init_chunk_dict, lock=False)
             self.dataset['decoded'] = True
         except:
             logger.warning_once("File %s could not be decoded properly by xarray (version %s).\n         It will be opened with no decoding. Filling values might be wrongly parsed."
                                 % (self.filename, xr.__version__))
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks=init_chunk_dict)
+            if self.lock_file:
+                self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks=init_chunk_dict)
+            else:
+                self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks=init_chunk_dict, lock=False)
             self.dataset['decoded'] = False
 
         for inds in self.indices.values():
@@ -1592,20 +1600,30 @@ class NetcdfFileBuffer(object):
         return self
 
     def __exit__(self, type, value, traceback):
+        self.close()
+
+    def close(self):
         if self.netcdf_engine == 'xarray':
             pass
         else:
-            self.dataset.close()
+            if self.dataset is not None:
+                self.dataset.close()
+                self.dataset = None
+        self.chunking_finalized = False
+        self.chunk_mapping = None
+        #sys.stdout.write("NetcdfFileBuffer.exit() - self.dataset RefCount: {}\n".format(sys.getrefcount(self.dataset)))
 
+    fd_ncdf_init_chunk_dict = open("netcdf_init_chunk_dict.log", 'w+')
+    @profile(stream=fd_ncdf_init_chunk_dict)
     def _get_initial_chunk_dictionary(self):
         # ==== check-opening requested dataset to access metadata ==== #
         try:
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine, chunks={})
+            self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine, chunks={}, lock=False)
             self.dataset['decoded'] = True
         except:
             logger.warning_once("File %s could not be decoded properly by xarray (version %s).\n         It will be opened with no decoding. Filling values might be wrongly parsed."
                                 % (self.filename, xr.__version__))
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks={})
+            self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks={}, lock=False)
             self.dataset['decoded'] = False
         # ==== self.dataset temporarily available ==== #
         init_chunk_dict = {}
@@ -1740,8 +1758,8 @@ class NetcdfFileBuffer(object):
     def data(self):
         return self.data_access()
 
-    #fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
-    #@profile(stream=fd_ncdf_data_access)
+    fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
+    @profile(stream=fd_ncdf_data_access)
     def data_access(self):
         if self.chunk_mapping is None and self.field_chunksize not in ['auto', False]:
             self.chunk_mapping = {}
@@ -1837,8 +1855,8 @@ class NetcdfFileBuffer(object):
             if isinstance(data, da.core.Array):
                 if self.field_chunksize == 'auto' and data.shape[-2:] == data.chunksize[-2:]:
                     #data = np.array(data)
-                    pass
-                elif self.field_chunksize == 'auto' and self.rechunk_callback_fields is not None:
+                    self.chunking_finalized = True
+                elif self.field_chunksize == 'auto' and self.rechunk_callback_fields is not None and not self.chunking_finalized:
                     data = data.rechunk(self.field_chunksize)
                     self.chunk_mapping = {}
                     chunkIndex = 0
@@ -1846,12 +1864,15 @@ class NetcdfFileBuffer(object):
                         self.chunk_mapping[chunkIndex] = chunkDim
                         chunkIndex += 1
                     self.rechunk_callback_fields()
-                elif self.field_chunksize != 'auto':    # why ? why here ? why at every single data access, instead of fixing that size when you open the file ?!
+                    self.chunking_finalized = True
+                elif self.field_chunksize != 'auto' and not self.chunking_finalized:    # why ? why here ? why at every single data access, instead of fixing that size when you open the file ?!
                     #data = data.rechunk(self.field_chunksize)
                     #sys.stdout.write("{}\n".format(data.shape))
                     # ==== I think this can be "pass" too ==== #
                     data = data.rechunk(self.chunk_mapping)
+                    self.chunking_finalized = True
             else:
+                self.chunking_finalized = True
                 da_data = da.from_array(data, chunks=self.field_chunksize)
                 if self.field_chunksize == 'auto' and da_data.shape[-2:] == da_data.chunksize[-2:]:
                     data = np.array(data)
@@ -1862,6 +1883,11 @@ class NetcdfFileBuffer(object):
 
     @property
     def time(self):
+        return self.time_access()
+
+    fd_ncdf_time_access = open("netcdf_time_access.log", 'w+')
+    @profile(stream=fd_ncdf_time_access)
+    def time_access(self):
         if self.timestamp is not None:
             return self.timestamp
 
