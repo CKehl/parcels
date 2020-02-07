@@ -71,8 +71,11 @@ class PerformanceLog():
             self._iter+=1
 
 def set_cmems_fieldset(cs, deferLoadFlag=True, periodicFlag=False):
-    #ddir_head = "/data/oceanparcels/input_data"
-    ddir_head = "/data"
+    ddir_head = ""
+    if os.uname()[1] in ['science-bs35', 'science-bs36']:
+        ddir_head = "/data/oceanparcels/input_data"
+    else:
+        ddir_head = "/data"
     ddir = os.path.join(ddir_head, "CMEMS/GLOBAL_REANALYSIS_PHY_001_030/")
     #print(ddir)
     files = sorted(glob(ddir+"mercatorglorys12v1_gl12_mean_201607*.nc"))
@@ -193,8 +196,12 @@ if __name__=='__main__':
     repeatdtFlag=args.repeatdt
     time_in_days = args.time_in_days
 
-    #odir = "/scratch/ckehl/experiments"
-    odir = "/var/scratch/experiments"
+    odir = ""
+    if os.uname()[1] in ['science-bs35', 'science-bs36']:
+        odir = "/scratch/{}/experiments".format(os.environ['USER'])
+    else:
+        odir = "/var/scratch/experiments"
+
     func_time = []
     mem_used_GB = []
     open_fds = []
