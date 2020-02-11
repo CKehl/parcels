@@ -1,3 +1,8 @@
+"""
+Author: Dr. Christian Kehl
+Date: 13-01-2020
+"""
+
 from parcels import FieldSet, ParticleSet, JITParticle, AdvectionRK4, Kernel, ErrorCode
 from datetime import timedelta as delta
 from argparse import ArgumentParser
@@ -212,17 +217,15 @@ if __name__=='__main__':
     #chunksize = [64, 256, 512, 1024, 1536, 2048, 'auto']
     #chunksize = [512, 'auto']
     auto_field_size = 0
-    if MPI:
-        mpi_comm = MPI.COMM_WORLD
-        mpi_rank = mpi_comm.Get_rank()
-        mpi_size = mpi_comm.Get_size()
-        if mpi_rank == 0:
-            #print("MPI - # workers: {}\n".format(mpi_size))
-            #print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
-            pass
-    else:
-        #print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
-        pass
+    #if MPI:
+    #    mpi_comm = MPI.COMM_WORLD
+    #    mpi_rank = mpi_comm.Get_rank()
+    #    mpi_size = mpi_comm.Get_size()
+    #    if mpi_rank == 0:
+    #        #print("MPI - # workers: {}\n".format(mpi_size))
+    #        print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
+    #else:
+    #    print("Dask global config - array.chunk-size: {}\n".format(da.config.get('array.chunk-size')))
 
     if do_chunking==False:
         fieldset = set_cmems_fieldset(False,deferLoadFlag,periodicFlag)
