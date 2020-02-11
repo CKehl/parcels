@@ -63,6 +63,7 @@ class Kernel(object):
 
     :arg fieldset: FieldSet object providing the field information
     :arg ptype: PType object for the kernel particle
+    :param delete_cfiles: Boolean whether to delete the C-files after compilation in JIT mode (default is True)
 
     Note: A Kernel is either created from a compiled <function ...> object
     or the necessary information (funcname, funccode, funcvars) is provided.
@@ -71,10 +72,11 @@ class Kernel(object):
     """
 
     def __init__(self, fieldset, ptype, pyfunc=None, funcname=None,
-                 funccode=None, py_ast=None, funcvars=None, c_include=""):
+                 funccode=None, py_ast=None, funcvars=None, c_include="", delete_cfiles=True):
         self.fieldset = fieldset
         self.ptype = ptype
         self._lib = None
+        self.delete_cfiles = delete_cfiles
 
         # Derive meta information from pyfunc, if not given
         self.funcname = funcname or pyfunc.__name__
@@ -173,7 +175,7 @@ class Kernel(object):
             _ctypes.FreeLibrary(self._lib._handle) if platform == 'win32' else _ctypes.dlclose(self._lib._handle)
             del self._lib
             self._lib = None
-            if path.isfile(self.lib_file):
+            if path.isfile(self.lib_file) and self.delete_cfiles:
                 [remove(s) for s in [self.src_file, self.lib_file, self.log_file]]
 
     @property
@@ -320,10 +322,15 @@ class Kernel(object):
 
         def remove_deleted(pset):
             """Utility to remove all particles that signalled deletion"""
-            indices = [i for i, p in enumerate(pset.particles)
-                       if p.state in [ErrorCode.Delete]]
+            # ====================================== #
+            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+            # ====================================== #
+            indices = [i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]]
             if len(indices) > 0 and output_file is not None:
                 output_file.write(pset[indices], endtime, deleted_only=True)
+            # ============================= #
+            # ==== EXPENSIVE OPERATION ==== #
+            # ============================= #
             pset.remove(indices)
 
         if recovery is None:
@@ -347,8 +354,10 @@ class Kernel(object):
         remove_deleted(pset)
 
         # Identify particles that threw errors
-        error_particles = [p for p in pset.particles
-                           if p.state != ErrorCode.Success]
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
+        error_particles = [p for p in pset.particles if p.state != ErrorCode.Success]
         while len(error_particles) > 0:
             # Apply recovery kernel
             for p in error_particles:

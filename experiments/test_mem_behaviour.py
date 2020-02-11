@@ -80,11 +80,13 @@ def set_cmems_fieldset(cs, deferLoadFlag=True, periodicFlag=False):
     #print(ddir)
     files = sorted(glob(ddir+"mercatorglorys12v1_gl12_mean_201607*.nc"))
     variables = {'U': 'uo', 'V': 'vo'}
-    dimensions = {'lon': 'longitude', 'lat': 'latitude', 'time': 'time'}
+    #dimensions = {'lon': 'longitude', 'lat': 'latitude', 'time': 'time'}
+    dimensions = {'lon': 'longitude', 'lat': 'latitude', 'depth': 'depth', 'time': 'time'}
 
     if cs not in ['auto', False]:
         # cs = (1, cs, cs) - old
-        cs = {dimensions['time']: 1, dimensions['lon']: cs, dimensions['lat']: cs}
+        #cs = {dimensions['depth']: 1, dimensions['lon']: cs, dimensions['lat']: cs}
+        cs = {dimensions['time']: 1, dimensions['depth']: cs, dimensions['lon']: cs, dimensions['lat']: cs}
     if periodicFlag:
         return FieldSet.from_netcdf(files, variables, dimensions, time_periodic=delta(days=30), deferred_load=deferLoadFlag, field_chunksize=cs)
     else:
