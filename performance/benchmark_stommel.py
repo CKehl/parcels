@@ -29,6 +29,12 @@ except:
 ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
 method = {'RK4': AdvectionRK4, 'EE': AdvectionEE, 'RK45': AdvectionRK45}
 global_t_0 = 0
+#Nparticle = 4096
+Nparticle = 8192
+#Nparticle = 65536
+a = 10000 * 1e3
+b = 10000 * 1e3
+scalefac = 0.05  # to scale for physically meaningful velocities
 
 class PerformanceLog():
     samples = []
@@ -93,8 +99,8 @@ def DeleteParticle(particle, fieldset, time):
     particle.delete()
 
 def RenewParticle(particle, fieldset, time):
-    particle.lat = np.random.rand() * 1e-5
-    particle.lon = np.random.rand() * 1e-5
+    particle.lat = np.random.rand() * 5e-1
+    particle.lon = np.random.rand() * 5e-1
 
 def stommel_fieldset_from_numpy(xdim=200, ydim=200, periodic_wrap=False):
     """Simulate a periodic current along a western boundary, with significantly
@@ -105,9 +111,6 @@ def stommel_fieldset_from_numpy(xdim=200, ydim=200, periodic_wrap=False):
     Ph.D. dissertation, University of Bologna
     http://amsdottorato.unibo.it/1733/1/Fabbroni_Nicoletta_Tesi.pdf
     """
-    a = 10000 * 1e3
-    b = 10000 * 1e3
-    scalefac = 0.05  # to scale for physically meaningful velocities
 
     # Coordinates of the test fieldset (on A-grid in deg)
     lon = np.linspace(0, a, xdim, dtype=np.float32)
@@ -140,9 +143,14 @@ def stommel_fieldset_from_numpy(xdim=200, ydim=200, periodic_wrap=False):
 
 
 def stommel_fieldset_from_xarray(xdim=200, ydim=200, periodic_wrap=False):
-    a = 10000 * 1e3
-    b = 10000 * 1e3
-    scalefac = 0.05  # to scale for physically meaningful velocities
+    """Simulate a periodic current along a western boundary, with significantly
+    larger velocities along the western edge than the rest of the region
+
+    The original test description can be found in: N. Fabbroni, 2009,
+    Numerical Simulation of Passive tracers dispersion in the sea,
+    Ph.D. dissertation, University of Bologna
+    http://amsdottorato.unibo.it/1733/1/Fabbroni_Nicoletta_Tesi.pdf
+    """
     # Coordinates of the test fieldset (on A-grid in deg)
     lon = np.linspace(0., a, xdim, dtype=np.float32)
     lat = np.linspace(0., b, ydim, dtype=np.float32)
@@ -180,19 +188,18 @@ def stommel_fieldset_from_xarray(xdim=200, ydim=200, periodic_wrap=False):
 
 
 if __name__=='__main__':
-    imageFileName = ""
     parser = ArgumentParser(description="Example of particle advection using in-memory stommel test case")
     parser.add_argument("-i", "--imageFileName", dest="imageFileName", type=str, default="mpiChunking_plot_MPI.png", help="image file name of the plot")
     parser.add_argument("-b", "--backwards", dest="backwards", action='store_true', default=False, help="enable/disable running the simulation backwards")
-    parser.add_argument("-d", "--defer", dest="defer", action='store_false', default=True, help="enable/disable running with deferred load (default: True)")
     parser.add_argument("-p", "--periodic", dest="periodic", action='store_true', default=False, help="enable/disable periodic wrapping (else: extrapolation)")
     parser.add_argument("-r", "--repeatdt", dest="repeatdt", action='store_true', default=False, help="continuously add particles via repeatdt (default: False)")
-    parser.add_argument("-t", "--time_in_days", dest="time_in_days", type=int, default=33, help="runtime in days (default: 1)")
+    parser.add_argument("-t", "--time_in_days", dest="time_in_days", type=int, default=1, help="runtime in days (default: 1)")
     parser.add_argument("-x", "--xarray", dest="use_xarray", action='store_true', default=False, help="use xarray as data backend")
+    parser.add_argument("-w", "--writeout", dest="write_out", action='store_true', default=False, help="write data in outfile")
+    parser.add_argument("-d", "--delParticle", dest="delete_particle", action='store_true', default=False, help="switch to delete a particle (True) or reset a particle (default: False).")
     args = parser.parse_args()
 
     imageFileName=args.imageFileName
-    deferLoadFlag = args.defer
     periodicFlag=args.periodic
     backwardSimulation = args.backwards
     repeatdtFlag=args.repeatdt
@@ -236,27 +243,35 @@ if __name__=='__main__':
     if backwardSimulation:
         # ==== backward simulation ==== #
         if repeatdtFlag:
-            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 1e-5, lat=np.random.rand(96, 1) * 1e-5, time=simStart, repeatdt=delta(hours=1))
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * a, lat=np.random.rand(96, 1) * b, time=simStart, repeatdt=delta(hours=1))
         else:
-            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(65536, 1) * 1e-5, lat=np.random.rand(65536, 1) * 1e-5, time=simStart)
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
     else:
         # ==== forward simulation ==== #
         if repeatdtFlag:
-            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * 5e-1, lat=np.random.rand(96, 1) * 5e-1, time=simStart, repeatdt=delta(hours=1))
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(96, 1) * a, lat=np.random.rand(96, 1) * b, time=simStart, repeatdt=delta(hours=1))
         else:
-            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(65536, 1) * 5e-1, lat=np.random.rand(65536, 1) * 5e-1, time=simStart)
+            pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
 
-    output_file = pset.ParticleFile(name=os.path.join(odir,"test_mem_behaviour.nc"), outputdt=delta(hours=1))
+    output_file = None
+    if args.write_out:
+        output_file = pset.ParticleFile(name=os.path.join(odir,"test_mem_behaviour.nc"), outputdt=delta(hours=1))
+    delete_func = RenewParticle
+    if args.delete_particle:
+        delete_func=DeleteParticle
+
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
 
     if backwardSimulation:
         # ==== backward simulation ==== #
-        pset.execute(AdvectionRK4, runtime=delta(days=time_in_days), dt=delta(hours=-1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: RenewParticle}, postIterationFunctions=postProcessFuncs)
+        pset.execute(AdvectionRK4, runtime=delta(days=time_in_days), dt=delta(hours=-1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: delete_func}, postIterationFunctions=postProcessFuncs)
     else:
         # ==== forward simulation ==== #
-        pset.execute(AdvectionRK4, runtime=delta(days=time_in_days), dt=delta(hours=1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: RenewParticle}, postIterationFunctions=postProcessFuncs)
-    output_file.close()
+        pset.execute(AdvectionRK4, runtime=delta(days=time_in_days), dt=delta(hours=1), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: delete_func}, postIterationFunctions=postProcessFuncs)
+
+    if args.write_out:
+        output_file.close()
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
