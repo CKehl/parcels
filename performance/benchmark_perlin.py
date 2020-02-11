@@ -32,16 +32,19 @@ ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
 method = {'RK4': AdvectionRK4, 'EE': AdvectionEE, 'RK45': AdvectionRK45}
 global_t_0 = 0
 #Nparticle = 4096
-Nparticle = 8192
-#Nparticle = 65536
+#Nparticle = 8192
+#Nparticle = int(math.pow(2,16))
+#Nparticle = int(math.pow(2,18))
+#Nparticle = 524288
+Nparticle = int(math.pow(2,19))
 
-noctaves=8
-perlinres=(64,16)
-shapescale=(4,4)
-perlin_persistence=0.8
+noctaves=4
+perlinres=(32,8)
+shapescale=(6,6)
+perlin_persistence=0.3
 a = 10000 * 1e3
 b = 10000 * 1e3
-scalefac = 0.05  # to scale for physically meaningful velocities
+scalefac = 0.08  # to scale for physically meaningful velocities
 
 class PerformanceLog():
     samples = []
@@ -106,8 +109,8 @@ def DeleteParticle(particle, fieldset, time):
     particle.delete()
 
 def RenewParticle(particle, fieldset, time):
-    particle.lat = np.random.rand() * 5e-1
-    particle.lon = np.random.rand() * 5e-1
+    particle.lat = np.random.rand() * a
+    particle.lon = np.random.rand() * b
 
 def perlin_fieldset_from_numpy(periodic_wrap=False):
     """Simulate a current from structured random noise (i.e. Perlin noise).
@@ -118,24 +121,26 @@ def perlin_fieldset_from_numpy(periodic_wrap=False):
     Perlin, Ken (July 1985). "An Image Synthesizer". SIGGRAPH Comput. Graph. 19 (97–8930), p. 287–296.
     doi:10.1145/325165.325247, https://dl.acm.org/doi/10.1145/325334.325247
     """
-    img_shape = (noctaves*perlinres[0]*shapescale[0], noctaves*perlinres[1]*shapescale[1])
+    img_shape = (int(math.pow(2,noctaves))*perlinres[0]*shapescale[0], int(math.pow(2,noctaves))*perlinres[1]*shapescale[1])
 
     # Coordinates of the test fieldset (on A-grid in deg)
     lon = np.linspace(0, a, img_shape[0], dtype=np.float32)
+    sys.stdout.write("lon field: {}\n".format(lon.size))
     lat = np.linspace(0, b, img_shape[1], dtype=np.float32)
+    sys.stdout.write("lat field: {}\n".format(lat.size))
 
     # Define arrays U (zonal), V (meridional), W (vertical) and P (sea
     # surface height) all on A-grid
-    U = perlin2d.generate_fractal_noise_2d((lon.size, lat.size), perlinres, noctaves, perlin_persistence) * scalefac
-    V = perlin2d.generate_fractal_noise_2d((lon.size, lat.size), perlinres, noctaves, perlin_persistence) * scalefac
-    P = perlin2d.generate_fractal_noise_2d((lon.size, lat.size), perlinres, noctaves, perlin_persistence) * scalefac
+    U = perlin2d.generate_fractal_noise_2d(img_shape, perlinres, noctaves, perlin_persistence) * scalefac
+    V = perlin2d.generate_fractal_noise_2d(img_shape, perlinres, noctaves, perlin_persistence) * scalefac
+    P = perlin2d.generate_fractal_noise_2d(img_shape, perlinres, noctaves, perlin_persistence) * scalefac
 
     data = {'U': U, 'V': V, 'P': P}
     dimensions = {'lon': lon, 'lat': lat}
     if periodic_wrap:
-        return FieldSet.from_data(data, dimensions, mesh='flat', transpose=False, time_periodic=delta(days=1))
+        return FieldSet.from_data(data, dimensions, mesh='flat', transpose=True, time_periodic=delta(days=1))
     else:
-        return FieldSet.from_data(data, dimensions, mesh='flat', transpose=False, allow_time_extrapolation=True)
+        return FieldSet.from_data(data, dimensions, mesh='flat', transpose=True, allow_time_extrapolation=True)
 
 
 def perlin_fieldset_from_xarray(periodic_wrap=False):
@@ -202,6 +207,7 @@ if __name__=='__main__':
     func_time = []
     mem_used_GB = []
 
+    np.random.seed(0)
     fieldset = None
     if use_xarray:
         fieldset = perlin_fieldset_from_xarray(periodic_wrap=periodicFlag)
