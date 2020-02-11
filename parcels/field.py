@@ -1614,8 +1614,8 @@ class NetcdfFileBuffer(object):
         self.chunk_mapping = None
         #sys.stdout.write("NetcdfFileBuffer.exit() - self.dataset RefCount: {}\n".format(sys.getrefcount(self.dataset)))
 
-    fd_ncdf_init_chunk_dict = open("netcdf_init_chunk_dict.log", 'w+')
-    @profile(stream=fd_ncdf_init_chunk_dict)
+    #fd_ncdf_init_chunk_dict = open("netcdf_init_chunk_dict.log", 'w+')
+    #@profile(stream=fd_ncdf_init_chunk_dict)
     def _get_initial_chunk_dictionary(self):
         # ==== check-opening requested dataset to access metadata ==== #
         try:
@@ -1809,8 +1809,8 @@ class NetcdfFileBuffer(object):
     def data(self):
         return self.data_access()
 
-    fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
-    @profile(stream=fd_ncdf_data_access)
+    #fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
+    #@profile(stream=fd_ncdf_data_access)
     def data_access(self):
         if self.chunk_mapping is None and self.field_chunksize not in ['auto', False]:
             self.chunk_mapping = {}
@@ -1948,8 +1948,8 @@ class NetcdfFileBuffer(object):
     def time(self):
         return self.time_access()
 
-    fd_ncdf_time_access = open("netcdf_time_access.log", 'w+')
-    @profile(stream=fd_ncdf_time_access)
+    #fd_ncdf_time_access = open("netcdf_time_access.log", 'w+')
+    #@profile(stream=fd_ncdf_time_access)
     def time_access(self):
         if self.timestamp is not None:
             return self.timestamp
