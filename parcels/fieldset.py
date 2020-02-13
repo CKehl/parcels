@@ -793,7 +793,7 @@ class FieldSet(object):
                         if fb is not None:
                             #fb.dataset.close()
                             fb.close()
-                        fb=None
+                        fb = None
 
                     data = f.computeTimeChunk(data, tind)
                 data = f.rescale_and_set_minmax(data)
