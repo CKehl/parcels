@@ -42,6 +42,8 @@ from parcels.tools.error import ErrorCode
 from parcels.tools.error import recovery_map as recovery_base_map
 from parcels.tools.loggers import logger
 
+DEBUG_MODE = False
+import sys
 
 __all__ = ['Kernel']
 
@@ -236,7 +238,9 @@ class Kernel(object):
                 f.chunk_data()
             else:
                 for block_id in range(len(f.data_chunks)):
+                    #del f.data_chunks[block_id]
                     f.data_chunks[block_id] = None
+                    f.c_data_chunks[block_id] = None
 
         for g in pset.fieldset.gridset.grids:
             g.load_chunk = np.where(g.load_chunk == 1, 2, g.load_chunk)
@@ -250,6 +254,9 @@ class Kernel(object):
             if not g.lat.flags.c_contiguous:
                 g.lat = g.lat.copy()
 
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
         fargs = [byref(f.ctypes_struct) for f in self.field_args.values()]
         fargs += [c_float(f) for f in self.const_args.values()]
         particle_data = pset._particle_data.ctypes.data_as(c_void_p)
@@ -320,7 +327,7 @@ class Kernel(object):
     def execute(self, pset, endtime, dt, recovery=None, output_file=None):
         """Execute this Kernel over a ParticleSet for several timesteps"""
 
-        def remove_deleted(pset):
+        def remove_deleted(pset, verbose=False):
             """Utility to remove all particles that signalled deletion"""
             # ====================================== #
             # ==== EXPENSIVE LIST COMPREHENSION ==== #
@@ -328,10 +335,15 @@ class Kernel(object):
             indices = [i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]]
             if len(indices) > 0 and output_file is not None:
                 output_file.write(pset[indices], endtime, deleted_only=True)
+            if DEBUG_MODE and len(indices) > 0 and verbose:
+                sys.stdout.write("|P| before delete: {}\n".format(len(pset.particles)))
             # ============================= #
             # ==== EXPENSIVE OPERATION ==== #
             # ============================= #
             pset.remove(indices)
+            if DEBUG_MODE and len(indices) > 0 and verbose:
+                sys.stdout.write("|P| after delete: {}\n".format(len(pset.particles)))
+            return pset
 
         if recovery is None:
             recovery = {}
@@ -358,18 +370,32 @@ class Kernel(object):
         # ==== EXPENSIVE LIST COMPREHENSION ==== #
         # ====================================== #
         error_particles = [p for p in pset.particles if p.state != ErrorCode.Success]
+
+        error_loop_iter = 0
         while len(error_particles) > 0:
             # Apply recovery kernel
             for p in error_particles:
                 if p.state == ErrorCode.Repeat:
                     p.state = ErrorCode.Success
                 else:
-                    recovery_kernel = recovery_map[p.state]
-                    p.state = ErrorCode.Success
-                    recovery_kernel(p, self.fieldset, p.time)
+                    if p.state in recovery_map:
+                        recovery_kernel = recovery_map[p.state]
+                        p.state = ErrorCode.Success
+                        recovery_kernel(p, self.fieldset, p.time)
+                    else:
+                        if DEBUG_MODE:
+                            sys.stdout.write("Error: loop={},  p.state={}, recovery_map: {}, age: {}, agetime: {}\n".format(error_loop_iter, p.state,recovery_map, p.age, p.agetime))
+                        p.delete()
+
+            if DEBUG_MODE:
+                before_len = len(pset.particles)
 
             # Remove all particles that signalled deletion
             remove_deleted(pset)
+
+            if DEBUG_MODE:
+                after_len = len(pset.particles)
+                remaining_delete_indices = len([i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]])
 
             # Execute core loop again to continue interrupted particles
             if self.ptype.uses_jit:
@@ -377,8 +403,18 @@ class Kernel(object):
             else:
                 self.execute_python(pset, endtime, dt)
 
-            error_particles = [p for p in pset.particles
-                               if p.state != ErrorCode.Success]
+            if DEBUG_MODE:
+                recalc_delete_indices = len([i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]])
+                if before_len != after_len:
+                    sys.stdout.write("removed particles in main: {}; remaining delete particles: {}\n".format(before_len-after_len, remaining_delete_indices))
+                if recalc_delete_indices > 0 or remaining_delete_indices > 0:
+                    sys.stdout.write("remaining delete particles after delete(): {}; new delete particles after execute(): {}\n".format(remaining_delete_indices, recalc_delete_indices))
+
+            # ====================================== #
+            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+            # ====================================== #
+            error_particles = [p for p in pset.particles if p.state != ErrorCode.Success]
+            error_loop_iter += 1
 
     def merge(self, kernel):
         funcname = self.funcname + kernel.funcname

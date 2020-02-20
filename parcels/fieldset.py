@@ -837,7 +837,7 @@ class FieldSet(object):
                     data = f.reshape(data)[2:, :]
                     #sys.stdout.write("Fieldset.computeTimeChunk - data.shape after reshaping at t={}: {}\n".format(time, data.shape))
                     if lib is da:
-                        f.data = da.concatenate([f.data[1:, :], data], axis=0)
+                        f.data = lib.concatenate([f.data[1:, :], data], axis=0)
                     else:
                         f.data[0] = None
                         f.data[:2, :] = f.data[1:, :]
@@ -845,7 +845,7 @@ class FieldSet(object):
                 else:
                     data = f.reshape(data)[0:1, :]
                     if lib is da:
-                        f.data = da.concatenate([data, f.data[:2, :]], axis=0)
+                        f.data = lib.concatenate([data, f.data[:2, :]], axis=0)
                     else:
                         f.data[2] = None
                         f.data[1:, :] = f.data[:2, :]
@@ -862,7 +862,7 @@ class FieldSet(object):
                                     break
                                 block = f.get_block(block_id)
                                 f.data_chunks[block_id][:2] = f.data_chunks[block_id][1:]
-                                f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2])
+                                f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2], order='C')
                     else:
                         for block_id in range(len(g.load_chunk)):
                             if g.load_chunk[block_id] == 2:
@@ -872,7 +872,7 @@ class FieldSet(object):
                                     break
                                 block = f.get_block(block_id)
                                 f.data_chunks[block_id][1:] = f.data_chunks[block_id][:2]
-                                f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0])
+                                f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0], order='C')
         # do user-defined computations on fieldset data
         if self.compute_on_defer:
             self.compute_on_defer(self)

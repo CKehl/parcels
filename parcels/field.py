@@ -941,7 +941,7 @@ class Field(object):
             for block_id in range(len(self.grid.load_chunk)):
                 if self.grid.load_chunk[block_id] == 1 or self.grid.load_chunk[block_id] > 1 and self.data_chunks[block_id] is None:
                     block = self.get_block(block_id)
-                    self.data_chunks[block_id] = np.array(self.data.blocks[(slice(self.grid.tdim),)+block])
+                    self.data_chunks[block_id] = np.array(self.data.blocks[(slice(self.grid.tdim),)+block], order='C')
                 elif self.grid.load_chunk[block_id] == 0:
                     self.data_chunks[block_id] = None
                     self.c_data_chunks[block_id] = None
@@ -1108,11 +1108,15 @@ class Field(object):
         return data
 
     def advancetime(self, field_new, advanceForward):
+        if isinstance(self.data) is not isinstance(field_new):
+            logger.warning("[Field.advancetime] New field data and persistent field data have different types - time advance not possible.")
+            return
+        lib = np if isinstance(self.data, np.ndarray) else da
         if advanceForward == 1:  # forward in time, so appending at end
-            self.data = np.concatenate((self.data[1:, :, :], field_new.data[:, :, :]), 0)
+            self.data = lib.concatenate((self.data[1:, :, :], field_new.data[:, :, :]), 0)
             self.time = self.grid.time
         else:  # backward in time, so prepending at start
-            self.data = np.concatenate((field_new.data[:, :, :], self.data[:-1, :, :]), 0)
+            self.data = lib.concatenate((field_new.data[:, :, :], self.data[:-1, :, :]), 0)
             self.time = self.grid.time
 
     #fp_field_cTC=open("field_computeTimeChunk.log",'w+')
@@ -1858,6 +1862,10 @@ class NetcdfFileBuffer(object):
                 #    else:
                 #        self.chunk_mapping[coord_id] = 1
         data = self.dataset[self.name]
+        libcheck = data.data if isinstance(data, xr.DataArray) else data
+        lib = np if isinstance(libcheck, np.ndarray) else da
+        libcheck=None
+
         ti = range(data.shape[0]) if self.ti is None else self.ti
         if len(data.shape) == 2:
             data = data[self.indices['lat'], self.indices['lon']]
@@ -1876,7 +1884,7 @@ class NetcdfFileBuffer(object):
                 lat1 = self.indices['lat'][-1]+1
                 lon0 = self.indices['lon'][0]
                 lon1 = self.indices['lon'][-1]+1
-                data = da.concatenate((data[d0:d1-1, lat0:lat1, lon0:lon1],
+                data = lib.concatenate((data[d0:d1-1, lat0:lat1, lon0:lon1],
                                        da.zeros((1, lat1-lat0, lon1-lon0))), axis=0)
             elif len(self.indices['depth']) > 1:
                 data = data[self.indices['depth'], self.indices['lat'], self.indices['lon']]
@@ -1898,10 +1906,10 @@ class NetcdfFileBuffer(object):
                 if(type(ti) in [list, range]):
                     t0 = ti[0]
                     t1 = ti[-1]+1
-                    data = da.concatenate((data[t0:t1, d0:d1-1, lat0:lat1, lon0:lon1],
+                    data = lib.concatenate((data[t0:t1, d0:d1-1, lat0:lat1, lon0:lon1],
                                            da.zeros((t1-t0, 1, lat1-lat0, lon1-lon0))), axis=1)
                 else:
-                    data = da.concatenate((data[ti, d0:d1-1, lat0:lat1, lon0:lon1],
+                    data = lib.concatenate((data[ti, d0:d1-1, lat0:lat1, lon0:lon1],
                                            da.zeros((1, lat1-lat0, lon1-lon0))), axis=0)
             else:
                 data = data[ti, self.indices['depth'], self.indices['lat'], self.indices['lon']]

@@ -114,6 +114,9 @@ class ParticleSet(object):
                 if partitions is not False:
                     if partitions is None:
                         if mpi_rank == 0:
+                            # ====================================== #
+                            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+                            # ====================================== #
                             coords = np.vstack((lon, lat)).transpose()
                             kmeans = KMeans(n_clusters=mpi_size, random_state=0).fit(coords)
                             partitions = kmeans.labels_
@@ -448,6 +451,8 @@ class ParticleSet(object):
             outputdt = outputdt.total_seconds()
         if isinstance(moviedt, delta):
             moviedt = moviedt.total_seconds()
+        if isinstance(callbackdt, delta):
+            callbackdt = callbackdt.total_seconds()
 
         assert runtime is None or runtime >= 0, 'runtime must be positive'
         assert outputdt is None or outputdt >= 0, 'outputdt must be positive'
@@ -462,6 +467,9 @@ class ParticleSet(object):
         # Derive _starttime and endtime from arguments or fieldset defaults
         if runtime is not None and endtime is not None:
             raise RuntimeError('Only one of (endtime, runtime) can be specified')
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
         _starttime = min([p.time for p in self]) if dt >= 0 else max([p.time for p in self])
         if self.repeatdt is not None and self.repeat_starttime is None:
             self.repeat_starttime = _starttime

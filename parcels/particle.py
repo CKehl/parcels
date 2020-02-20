@@ -198,6 +198,9 @@ class ScipyParticle(_Particle):
     def delete(self):
         self.state = ErrorCode.Delete
 
+    def reset_state(self):
+        self.state = ErrorCode.Success
+
     @classmethod
     def set_lonlatdepth_dtype(cls, dtype):
         cls.lon.dtype = dtype
@@ -238,7 +241,9 @@ class JITParticle(ScipyParticle):
         if self._cptr is None:
             # Allocate data for a single particle
             ptype = self.getPType()
-            self._cptr = np.empty(1, dtype=ptype.dtype)[0]
+            # here, np.empty is potentially hazardous - the pointer should always be initialized to 0 (unless data is set)
+            #self._cptr = np.empty(1, dtype=ptype.dtype)[0]
+            self._cptr = np.zeros(1, dtype=ptype.dtype)[0]
         super(JITParticle, self).__init__(*args, **kwargs)
 
         fieldset = kwargs.get('fieldset')
