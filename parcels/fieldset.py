@@ -839,7 +839,8 @@ class FieldSet(object):
                     if lib is da:
                         f.data = lib.concatenate([f.data[1:, :], data], axis=0)
                     else:
-                        f.data[0] = None
+                        #f.data[0] = None
+                        del f.data[0, :]
                         f.data[:2, :] = f.data[1:, :]
                         f.data[2, :] = data
                 else:
@@ -847,7 +848,8 @@ class FieldSet(object):
                     if lib is da:
                         f.data = lib.concatenate([data, f.data[:2, :]], axis=0)
                     else:
-                        f.data[2] = None
+                        #f.data[2] = None
+                        del f.data[2, :]
                         f.data[1:, :] = f.data[:2, :]
                         f.data[0, :] = data
                 #sys.stdout.write("Fieldset.computeTimeChunk - Field.data.shape before updating chunk status at t={}: {}\n".format(time, f.data.shape))
@@ -861,7 +863,10 @@ class FieldSet(object):
                                     # happens when field not called by kernel, but shares a grid with another field called by kernel
                                     break
                                 block = f.get_block(block_id)
+                                f.data_chunks[block_id][0] = None
                                 f.data_chunks[block_id][:2] = f.data_chunks[block_id][1:]
+                                # == original: == #
+                                # f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2])
                                 f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2], order='C')
                     else:
                         for block_id in range(len(g.load_chunk)):
@@ -871,7 +876,10 @@ class FieldSet(object):
                                     # happens when field not called by kernel, but shares a grid with another field called by kernel
                                     break
                                 block = f.get_block(block_id)
+                                f.data_chunks[block_id][2] = None
                                 f.data_chunks[block_id][1:] = f.data_chunks[block_id][:2]
+                                # == original: == #
+                                # f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0])
                                 f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0], order='C')
         # do user-defined computations on fieldset data
         if self.compute_on_defer:
