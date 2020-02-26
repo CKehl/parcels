@@ -22,7 +22,7 @@ from sys import version_info
 import numpy as np
 import numpy.ctypeslib as npct
 
-from memory_profiler import profile
+#from memory_profiler import profile
 try:
     from mpi4py import MPI
 except:
@@ -42,6 +42,8 @@ from parcels.tools.error import ErrorCode
 from parcels.tools.error import recovery_map as recovery_base_map
 from parcels.tools.loggers import logger
 
+DEBUG_MODE = False
+import sys
 
 __all__ = ['Kernel']
 
@@ -63,6 +65,7 @@ class Kernel(object):
 
     :arg fieldset: FieldSet object providing the field information
     :arg ptype: PType object for the kernel particle
+    :param delete_cfiles: Boolean whether to delete the C-files after compilation in JIT mode (default is True)
 
     Note: A Kernel is either created from a compiled <function ...> object
     or the necessary information (funcname, funccode, funcvars) is provided.
@@ -71,10 +74,11 @@ class Kernel(object):
     """
 
     def __init__(self, fieldset, ptype, pyfunc=None, funcname=None,
-                 funccode=None, py_ast=None, funcvars=None, c_include=""):
+                 funccode=None, py_ast=None, funcvars=None, c_include="", delete_cfiles=True):
         self.fieldset = fieldset
         self.ptype = ptype
         self._lib = None
+        self.delete_cfiles = delete_cfiles
 
         # Derive meta information from pyfunc, if not given
         self.funcname = funcname or pyfunc.__name__
@@ -173,7 +177,7 @@ class Kernel(object):
             _ctypes.FreeLibrary(self._lib._handle) if platform == 'win32' else _ctypes.dlclose(self._lib._handle)
             del self._lib
             self._lib = None
-            if path.isfile(self.lib_file):
+            if path.isfile(self.lib_file) and self.delete_cfiles:
                 [remove(s) for s in [self.src_file, self.lib_file, self.log_file]]
 
     @property
@@ -217,7 +221,7 @@ class Kernel(object):
         self._lib = npct.load_library(self.lib_file, '.')
         self._function = self._lib.particle_loop
 
-    #@profile
+    @profile
     def execute_jit(self, pset, endtime, dt):
         """Invokes JIT engine to perform the core update loop"""
         if len(pset.particles) > 0:
@@ -234,7 +238,9 @@ class Kernel(object):
                 f.chunk_data()
             else:
                 for block_id in range(len(f.data_chunks)):
+                    #del f.data_chunks[block_id]
                     f.data_chunks[block_id] = None
+                    f.c_data_chunks[block_id] = None
 
         for g in pset.fieldset.gridset.grids:
             g.load_chunk = np.where(g.load_chunk == 1, 2, g.load_chunk)
@@ -248,6 +254,9 @@ class Kernel(object):
             if not g.lat.flags.c_contiguous:
                 g.lat = g.lat.copy()
 
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
         fargs = [byref(f.ctypes_struct) for f in self.field_args.values()]
         fargs += [c_float(f) for f in self.const_args.values()]
         particle_data = pset._particle_data.ctypes.data_as(c_void_p)
@@ -315,16 +324,28 @@ class Kernel(object):
                     dt_pos = min(abs(p.dt), abs(endtime - p.time))
                     break
 
+    @profile
     def execute(self, pset, endtime, dt, recovery=None, output_file=None):
         """Execute this Kernel over a ParticleSet for several timesteps"""
 
-        def remove_deleted(pset):
+        @profile
+        def remove_deleted(pset, verbose=False):
             """Utility to remove all particles that signalled deletion"""
-            indices = [i for i, p in enumerate(pset.particles)
-                       if p.state in [ErrorCode.Delete]]
+            # ====================================== #
+            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+            # ====================================== #
+            indices = [i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]]
             if len(indices) > 0 and output_file is not None:
                 output_file.write(pset[indices], endtime, deleted_only=True)
+            if DEBUG_MODE and len(indices) > 0 and verbose:
+                sys.stdout.write("|P| before delete: {}\n".format(len(pset.particles)))
+            # ============================= #
+            # ==== EXPENSIVE OPERATION ==== #
+            # ============================= #
             pset.remove(indices)
+            if DEBUG_MODE and len(indices) > 0 and verbose:
+                sys.stdout.write("|P| after delete: {}\n".format(len(pset.particles)))
+            return pset
 
         if recovery is None:
             recovery = {}
@@ -347,20 +368,36 @@ class Kernel(object):
         remove_deleted(pset)
 
         # Identify particles that threw errors
-        error_particles = [p for p in pset.particles
-                           if p.state != ErrorCode.Success]
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
+        error_particles = [p for p in pset.particles if p.state != ErrorCode.Success]
+
+        error_loop_iter = 0
         while len(error_particles) > 0:
             # Apply recovery kernel
             for p in error_particles:
                 if p.state == ErrorCode.Repeat:
                     p.state = ErrorCode.Success
                 else:
-                    recovery_kernel = recovery_map[p.state]
-                    p.state = ErrorCode.Success
-                    recovery_kernel(p, self.fieldset, p.time)
+                    if p.state in recovery_map:
+                        recovery_kernel = recovery_map[p.state]
+                        p.state = ErrorCode.Success
+                        recovery_kernel(p, self.fieldset, p.time)
+                    else:
+                        if DEBUG_MODE:
+                            sys.stdout.write("Error: loop={},  p.state={}, recovery_map: {}, age: {}, agetime: {}\n".format(error_loop_iter, p.state,recovery_map, p.age, p.agetime))
+                        p.delete()
+
+            if DEBUG_MODE:
+                before_len = len(pset.particles)
 
             # Remove all particles that signalled deletion
             remove_deleted(pset)
+
+            if DEBUG_MODE:
+                after_len = len(pset.particles)
+                remaining_delete_indices = len([i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]])
 
             # Execute core loop again to continue interrupted particles
             if self.ptype.uses_jit:
@@ -368,17 +405,29 @@ class Kernel(object):
             else:
                 self.execute_python(pset, endtime, dt)
 
-            error_particles = [p for p in pset.particles
-                               if p.state != ErrorCode.Success]
+            if DEBUG_MODE:
+                recalc_delete_indices = len([i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]])
+                if before_len != after_len:
+                    sys.stdout.write("removed particles in main: {}; remaining delete particles: {}\n".format(before_len-after_len, remaining_delete_indices))
+                if recalc_delete_indices > 0 or remaining_delete_indices > 0:
+                    sys.stdout.write("remaining delete particles after delete(): {}; new delete particles after execute(): {}\n".format(remaining_delete_indices, recalc_delete_indices))
+
+            # ====================================== #
+            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+            # ====================================== #
+            error_particles = [p for p in pset.particles if p.state != ErrorCode.Success]
+            error_loop_iter += 1
 
     def merge(self, kernel):
         funcname = self.funcname + kernel.funcname
         func_ast = FunctionDef(name=funcname, args=self.py_ast.args,
                                body=self.py_ast.body + kernel.py_ast.body,
                                decorator_list=[], lineno=1, col_offset=0)
+        delete_cfiles = self.delete_cfiles and kernel.delete_cfiles
         return Kernel(self.fieldset, self.ptype, pyfunc=None,
                       funcname=funcname, funccode=self.funccode + kernel.funccode,
-                      py_ast=func_ast, funcvars=self.funcvars + kernel.funcvars)
+                      py_ast=func_ast, funcvars=self.funcvars + kernel.funcvars,
+                      delete_cfiles=delete_cfiles)
 
     def __add__(self, kernel):
         if not isinstance(kernel, Kernel):

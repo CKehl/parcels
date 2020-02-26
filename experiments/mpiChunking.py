@@ -53,8 +53,8 @@ if __name__=='__main__':
     func_time = []
     mem_used_GB = []
     open_fds = []
-    #chunksize = [50, 100, 200, 400, 800, 1000, 1500, 2000, 2500, 4000, 'auto', False]
-    chunksize = [64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 'auto', False]
+    chunksize = [50, 100, 200, 400, 800, 1000, 1500, 2000, 2500, 4000, 'auto', False]
+    #chunksize = [64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 'auto', False]
     #chunksize = [512, 'auto']
     auto_field_size = 0
     if MPI:
@@ -68,11 +68,11 @@ if __name__=='__main__':
         fieldset = set_cmems_fieldset(cs)
         #pset = ParticleSet(fieldset=fieldset, pclass=JITParticle, lon=[0.000001*0,0.000001*1,0.000001*2,0.000001*3], lat=[0,0,0,0], repeatdt=delta(hours=1))
         pset = ParticleSet(fieldset=fieldset, pclass=JITParticle,
-                           lon=np.random.rand(48,1)*1e-5, lat=np.random.rand(48,1)*1e-5,
+                           lon=np.random.rand(32,1)*1e-5, lat=np.random.rand(32,1)*1e-5,
                            repeatdt=delta(hours=1))
 
         tic = time.time()
-        pset.execute(AdvectionRK4, runtime=delta(days=7), dt=delta(hours=1))
+        pset.execute(AdvectionRK4, dt=delta(hours=1))
 
         if cs=='auto':
             for f in fieldset.get_fields():
@@ -100,11 +100,13 @@ if __name__=='__main__':
             mem_B_used_total = mpi_comm.reduce(mem_B_used, op=MPI.SUM, root=0)
             fds_open_total = mpi_comm.reduce(fds_open, op=MPI.SUM, root=0)
             if mpi_rank==0:
-                mem_used_GB.append(mem_B_used_total/(1024*1024*1024))
+                #mem_used_GB.append(mem_B_used_total/(1024*1024*1024))
+                mem_used_GB.append(mem_B_used_total / (1024 * 1024))
                 open_fds.append(fds_open_total)
                 #print(mem_B_used/(1024*1024))
         else:
-            mem_used_GB.append(mem_B_used/(1024*1024*1024))
+            #mem_used_GB.append(mem_B_used/(1024*1024*1024))
+            mem_used_GB.append(mem_B_used / (1024 * 1024))
             #print(mem_B_used/(1024*1024))
 
         #if MPI:
@@ -126,30 +128,44 @@ if __name__=='__main__':
         else:
             #print("auto-determined fieldsize: {}\n".format(auto_field_size))
             fig, ax = plt.subplots(1, 1, figsize=(15, 12))
-            ax.plot(chunksize[:-2], func_time[:-2], 'o-', label="time_spent in pset.execute() [s]")
-            ax.plot(chunksize[:-2], mem_used_GB[:-2], 'x-', label="memory_used [GB]")
-            ax.plot(chunksize[:-2], open_fds[:-2], '.-', label="open_files [#]")
-            ax.plot([0, 2100], [func_time[-2], func_time[-2]], '--', label="auto={}".format(auto_field_size))
-            ax.plot([0, 2100], [func_time[-1], func_time[-1]], '--', label="no chunks [False]")
-            plt.xlim([0, 2100])
-            plt.ylim([0,60])
+            ax.plot(chunksize[:-2], func_time[:-2], 'o-', label="time(field_chunksize) [s]")
+            #ax.plot(chunksize[:-2], mem_used_GB[:-2], '--', label="memory_used [GB]")
+            #ax.plot(chunksize[:-2], open_fds[:-2], '.-', label="open_files [#]")
+            ax.plot([0, 4000], [func_time[-2], func_time[-2]], 'x-', label="auto (size={}) [s]".format(auto_field_size))
+            ax.plot([0, 4000], [func_time[-1], func_time[-1]], '--', label="no chunking [s]")
+            #plt.xlim([0, 2100])
+            #plt.ylim([0,60])
             plt.legend()
             ax.set_xlabel('field_chunksize')
-            # ax.set_ylabel('Time spent in pset.execute() [s]')
+            ax.set_ylabel('Time spent in pset.execute() [s]')
             #ax.set_ylabel('Time spent [s]')
             plt.savefig(os.path.join(odir, "mpiChunking_plot_MPI.png"), dpi=300, format='png')
+
+            fig2, ax2 = plt.subplots(1, 1, figsize=(15, 12))
+            ax2.plot(chunksize[:-2], mem_used_GB[:-2], '--', label="memory_blocked [MB]")
+            ax2.plot([0, 4000], [mem_used_GB[-2], mem_used_GB[-2]], 'x-', label="auto (size={}) [MB]".format(auto_field_size))
+            ax2.plot([0, 4000], [mem_used_GB[-1], mem_used_GB[-1]], '--', label="no chunking [MB]")
+            #plt.xlim([0, 2100])
+            #plt.ylim([0,60])
+            plt.legend()
+            ax2.set_xlabel('field_chunksize')
+            ax2.set_ylabel('Memory blocked in pset.execute() [MB]')
+            plt.savefig(os.path.join(odir, "mpiChunking_plot_MPI_mem.png"), dpi=300, format='png')
     else:
-        #print("auto-determined fieldsize: {}\n".format(auto_field_size))
         fig, ax = plt.subplots(1, 1, figsize=(15, 12))
-        ax.plot(chunksize[:-2], func_time[:-2], 'o-', label="time_spent in pset.execute() [s]")
-        ax.plot(chunksize[:-2], mem_used_GB[:-2], 'x-', label="memory_used [GB]")
-        ax.plot(chunksize[:-2], open_fds[:-2], '.-', label="open_files [#]")
-        ax.plot([0, 2100], [func_time[-2], func_time[-2]], '--', label="auto={}".format(auto_field_size))
-        ax.plot([0, 2100], [func_time[-1], func_time[-1]], '--', label="no chunks [False]")
-        plt.xlim([0, 2100])
-        plt.ylim([0, 60])
+        ax.plot(chunksize[:-2], func_time[:-2], 'o-', label="time(field_chunksize) [s]")
+        ax.plot([0, 4000], [func_time[-2], func_time[-2]], 'x-', label="auto (size={}) [s]".format(auto_field_size))
+        ax.plot([0, 4000], [func_time[-1], func_time[-1]], '--', label="no chunking [s]")
         plt.legend()
         ax.set_xlabel('field_chunksize')
-        # ax.set_ylabel('Time spent in pset.execute() [s]')
-        # ax.set_ylabel('Time spent [s]')
+        ax.set_ylabel('Time spent in pset.execute() [s]')
         plt.savefig(os.path.join(odir, "mpiChunking_plot.png"), dpi=300, format='png')
+
+        fig2, ax2 = plt.subplots(1, 1, figsize=(15, 12))
+        ax2.plot(chunksize[:-2], mem_used_GB[:-2], '--', label="memory_blocked [MB]")
+        ax2.plot([0, 4000], [mem_used_GB[-2], mem_used_GB[-2]], 'x-', label="auto (size={}) [MB]".format(auto_field_size))
+        ax2.plot([0, 4000], [mem_used_GB[-1], mem_used_GB[-1]], '--', label="no chunking [MB]")
+        plt.legend()
+        ax2.set_xlabel('field_chunksize')
+        ax2.set_ylabel('Memory blocked in pset.execute() [MB]')
+        plt.savefig(os.path.join(odir, "mpiChunking_plot_MPI_mem.png"), dpi=300, format='png')

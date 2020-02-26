@@ -2,6 +2,7 @@ from datetime import datetime
 from datetime import timedelta as delta
 
 import numpy as np
+import dask.array as da
 
 from parcels.field import Field
 from parcels.field import VectorField
@@ -163,6 +164,8 @@ def plotfield(field, show_time=None, domain=None, depth_level=0, projection=None
                 data[i] = np.squeeze(fld.data)[depth_level, latS:latN, lonW:lonE]
             else:
                 data[i] = np.squeeze(fld.data)[latS:latN, lonW:lonE]
+        if isinstance(data[i], da.Array):
+            data[i] = np.array(data[i])
 
     if plottype == 'vector':
         if field[0].interp_method == 'cgrid_velocity':
@@ -187,7 +190,7 @@ def plotfield(field, show_time=None, domain=None, depth_level=0, projection=None
         u = np.where(speed > 0., data[0]/speed, 0)
         v = np.where(speed > 0., data[1]/speed, 0)
         if cartopy:
-            cs = ax.quiver(x, y, u, v, speed, cmap=plt.cm.gist_ncar, clim=[vmin, vmax], scale=50, transform=cartopy.crs.PlateCarree())
+            cs = ax.quiver(np.asarray(x), np.asarray(y), np.asarray(u), np.asarray(v), speed, cmap=plt.cm.gist_ncar, clim=[vmin, vmax], scale=50, transform=cartopy.crs.PlateCarree())
         else:
             cs = ax.quiver(x, y, u, v, speed, cmap=plt.cm.gist_ncar, clim=[vmin, vmax], scale=50)
     else:

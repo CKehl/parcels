@@ -8,7 +8,8 @@ import numpy as np
 import xarray as xr
 import progressbar
 
-from memory_profiler import profile
+#from memory_profiler import profile
+#from line_profiler import profile
 
 from parcels.compiler import GNUCompiler
 from parcels.field import NestedField
@@ -21,9 +22,14 @@ from parcels.particlefile import ParticleFile
 from parcels.tools.loggers import logger
 try:
     from mpi4py import MPI
-    from sklearn.cluster import KMeans
 except:
     MPI = None
+if MPI:
+    try:
+        from sklearn.cluster import KMeans
+    except:
+        raise EnvironmentError('sklearn needs to be available if MPI is installed. '
+                               'See http://oceanparcels.org/#parallel_install for more information')
 
 __all__ = ['ParticleSet']
 
@@ -109,6 +115,9 @@ class ParticleSet(object):
                 if partitions is not False:
                     if partitions is None:
                         if mpi_rank == 0:
+                            # ====================================== #
+                            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+                            # ====================================== #
                             coords = np.vstack((lon, lat)).transpose()
                             kmeans = KMeans(n_clusters=mpi_size, random_state=0).fit(coords)
                             partitions = kmeans.labels_
@@ -168,7 +177,7 @@ class ParticleSet(object):
         if lon is not None and lat is not None:
             # Initialise from arrays of lon/lat coordinates
             assert self.particles.size == lon.size and self.particles.size == lat.size, (
-                'Size of ParticleSet does not match lenght of lon and lat.')
+                'Size of ParticleSet does not match length of lon and lat.')
 
             for i in range(lon.size):
                 self.particles[i] = pclass(lon[i], lat[i], pid[i], fieldset=fieldset, depth=depth[i], cptr=cptr(i), time=time[i])
@@ -341,6 +350,11 @@ class ParticleSet(object):
         return self.size
 
     def __getitem__(self, key):
+        #return self.particles[key]
+        return self.retrieve_item(key)
+
+    @profile
+    def retrieve_item(self, key):
         return self.particles[key]
 
     def __setitem__(self, key, value):
@@ -364,6 +378,7 @@ class ParticleSet(object):
             for p, pdata in zip(self.particles, self._particle_data):
                 p._cptr = pdata
 
+    @profile
     def remove(self, indices):
         """Method to remove particles from the ParticleSet, based on their `indices`"""
         if isinstance(indices, collections.Iterable):
@@ -381,7 +396,7 @@ class ParticleSet(object):
     #@profile
     def execute(self, pyfunc=AdvectionRK4, endtime=None, runtime=None, dt=1.,
                 moviedt=None, recovery=None, output_file=None, movie_background_field=None,
-                verbose_progress=None, postIterationFunctions=None):
+                verbose_progress=None, postIterationCallbacks=None, callbackdt=None):
         """Execute a given kernel function over the particle set for
         multiple timesteps. Optionally also provide sub-timestepping
         for particle output.
@@ -407,7 +422,8 @@ class ParticleSet(object):
         :param movie_background_field: field plotted as background in the movie if moviedt is set.
                                        'vector' shows the velocity as a vector field.
         :param verbose_progress: Boolean for providing a progress bar for the kernel execution loop.
-        :param postIterationFunctions: Array of functions that are to be called after each iteration (post-process, non-Kernel)
+        :param postIterationCallbacks: Array of functions that are to be called after each iteration (post-process, non-Kernel)
+        :param callbackdt: timestep inverval to (latestly) interrupt the running kernel and invoke post-iteration callbacks from 'postIterationCallbacks'
         """
 
         # check if pyfunc has changed since last compile. If so, recompile
@@ -442,6 +458,8 @@ class ParticleSet(object):
             outputdt = outputdt.total_seconds()
         if isinstance(moviedt, delta):
             moviedt = moviedt.total_seconds()
+        if isinstance(callbackdt, delta):
+            callbackdt = callbackdt.total_seconds()
 
         assert runtime is None or runtime >= 0, 'runtime must be positive'
         assert outputdt is None or outputdt >= 0, 'outputdt must be positive'
@@ -456,6 +474,9 @@ class ParticleSet(object):
         # Derive _starttime and endtime from arguments or fieldset defaults
         if runtime is not None and endtime is not None:
             raise RuntimeError('Only one of (endtime, runtime) can be specified')
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
         _starttime = min([p.time for p in self]) if dt >= 0 else max([p.time for p in self])
         if self.repeatdt is not None and self.repeat_starttime is None:
             self.repeat_starttime = _starttime
@@ -484,6 +505,11 @@ class ParticleSet(object):
 
         if moviedt is None:
             moviedt = np.infty
+        if callbackdt is None:
+            interupt_dts = [np.infty, moviedt, outputdt]
+            if self.repeatdt is not None:
+                interupt_dts.append(self.repeatdt)
+            callbackdt = np.min(np.array(interupt_dts))
         time = _starttime
         if self.repeatdt:
             next_prelease = self.repeat_starttime + (abs(time - self.repeat_starttime) // self.repeatdt + 1) * self.repeatdt * np.sign(dt)
@@ -491,6 +517,7 @@ class ParticleSet(object):
             next_prelease = np.infty if dt > 0 else - np.infty
         next_output = time + outputdt if dt > 0 else time - outputdt
         next_movie = time + moviedt if dt > 0 else time - moviedt
+        next_callback = time + callbackdt if dt > 0 else time - callbackdt
         next_input = self.fieldset.computeTimeChunk(time, np.sign(dt))
 
         tol = 1e-12
@@ -511,9 +538,9 @@ class ParticleSet(object):
                 pbar = progressbar.ProgressBar(max_value=abs(endtime - _starttime)).start()
                 verbose_progress = True
             if dt > 0:
-                time = min(next_prelease, next_input, next_output, next_movie, endtime)
+                time = min(next_prelease, next_input, next_output, next_movie, next_callback, endtime)
             else:
-                time = max(next_prelease, next_input, next_output, next_movie, endtime)
+                time = max(next_prelease, next_input, next_output, next_movie, next_callback, endtime)
             self.kernel.execute(self, endtime=time, dt=dt, recovery=recovery, output_file=output_file)
             if abs(time-next_prelease) < tol:
                 pset_new = ParticleSet(fieldset=self.fieldset, time=time, lon=self.repeatlon,
@@ -532,9 +559,11 @@ class ParticleSet(object):
                 self.show(field=movie_background_field, show_time=time, animation=True)
                 next_movie += moviedt * np.sign(dt)
             # ==== insert post-process here to also allow for memory clean-up via external func ==== #
-            if postIterationFunctions is not None:
-                for extFunc in postIterationFunctions:
-                    extFunc()
+            if abs(time-next_callback) < tol:
+                if postIterationCallbacks is not None:
+                    for extFunc in postIterationCallbacks:
+                        extFunc()
+                next_callback += callbackdt * np.sign(dt)
             if time != endtime:
                 next_input = self.fieldset.computeTimeChunk(time, dt)
             if dt == 0:
@@ -606,10 +635,13 @@ class ParticleSet(object):
 
         return density
 
-    def Kernel(self, pyfunc, c_include=""):
+    def Kernel(self, pyfunc, c_include="", delete_cfiles=True):
         """Wrapper method to convert a `pyfunc` into a :class:`parcels.kernel.Kernel` object
-        based on `fieldset` and `ptype` of the ParticleSet"""
-        return Kernel(self.fieldset, self.ptype, pyfunc=pyfunc, c_include=c_include)
+        based on `fieldset` and `ptype` of the ParticleSet
+        :param delete_cfiles: Boolean whether to delete the C-files after compilation in JIT mode (default is True)
+        """
+        return Kernel(self.fieldset, self.ptype, pyfunc=pyfunc, c_include=c_include,
+                      delete_cfiles=delete_cfiles)
 
     def ParticleFile(self, *args, **kwargs):
         """Wrapper method to initialise a :class:`parcels.particlefile.ParticleFile`
