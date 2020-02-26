@@ -221,7 +221,7 @@ class Kernel(object):
         self._lib = npct.load_library(self.lib_file, '.')
         self._function = self._lib.particle_loop
 
-    #@profile
+    @profile
     def execute_jit(self, pset, endtime, dt):
         """Invokes JIT engine to perform the core update loop"""
         if len(pset.particles) > 0:
@@ -324,9 +324,11 @@ class Kernel(object):
                     dt_pos = min(abs(p.dt), abs(endtime - p.time))
                     break
 
+    @profile
     def execute(self, pset, endtime, dt, recovery=None, output_file=None):
         """Execute this Kernel over a ParticleSet for several timesteps"""
 
+        @profile
         def remove_deleted(pset, verbose=False):
             """Utility to remove all particles that signalled deletion"""
             # ====================================== #

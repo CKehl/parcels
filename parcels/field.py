@@ -16,7 +16,7 @@ import xarray as xr
 from py import path
 
 import sys
-from memory_profiler import profile
+#from memory_profiler import profile
 
 import parcels.tools.interpolation_utils as i_u
 from .grid import CGrid
@@ -375,7 +375,7 @@ class Field(object):
         if allow_time_extrapolation is None:
             allow_time_extrapolation = False if 'time' in dimensions else True
 
-        kwargs['dimensions'] = dimensions.copy()
+        kwargs['dimensions'] = dimensions.copy()    # ==== WHY is this a copy-op ? ==== #
         kwargs['indices'] = indices
         kwargs['time_periodic'] = time_periodic
         kwargs['netcdf_engine'] = netcdf_engine
@@ -942,6 +942,7 @@ class Field(object):
                 if self.grid.load_chunk[block_id] == 1 or self.grid.load_chunk[block_id] > 1 and self.data_chunks[block_id] is None:
                     block = self.get_block(block_id)
                     self.data_chunks[block_id] = np.array(self.data.blocks[(slice(self.grid.tdim),)+block], order='C')
+                    #self.data_chunks[block_id] = np.array(self.data.blocks[(slice(self.grid.tdim),) + block])
                 elif self.grid.load_chunk[block_id] == 0:
                     self.data_chunks[block_id] = None
                     self.c_data_chunks[block_id] = None
@@ -954,7 +955,10 @@ class Field(object):
     def ctypes_struct(self):
         """Returns a ctypes struct object containing all relevant
         pointers and sizes for this field."""
+        return self.get_ctypes_struct()
 
+    @profile
+    def get_ctypes_struct(self):
         # Ctypes struct corresponding to the type definition in parcels.h
         class CField(Structure):
             _fields_ = [('xdim', c_int), ('ydim', c_int), ('zdim', c_int),
@@ -1583,7 +1587,9 @@ class NetcdfFileBuffer(object):
             self.dataset = self.filename
             return self
 
-        init_chunk_dict = self._get_initial_chunk_dictionary()
+        init_chunk_dict = None
+        if self.field_chunksize not in [False, None]:
+            init_chunk_dict = self._get_initial_chunk_dictionary()
         try:
             # Unfortunately we need to do if-else here, cause the lock-parameter is either False or a Lock-object (we would rather want to have it auto-managed).
             # If 'lock' is not specified, the Lock-object is auto-created and managed bz xarray internally.
@@ -1624,14 +1630,9 @@ class NetcdfFileBuffer(object):
     #@profile(stream=fd_ncdf_init_chunk_dict)
     def _get_initial_chunk_dictionary(self):
         # ==== check-opening requested dataset to access metadata ==== #
-        try:
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=True, engine=self.netcdf_engine, chunks={}, lock=False)
-            self.dataset['decoded'] = True
-        except:
-            logger.warning_once("File %s could not be decoded properly by xarray (version %s).\n         It will be opened with no decoding. Filling values might be wrongly parsed."
-                                % (self.filename, xr.__version__))
-            self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks={}, lock=False)
-            self.dataset['decoded'] = False
+        # ==== opening the file for getting the dimensions does not require a decode - so don't even try. Save some computation ==== #
+        self.dataset = xr.open_dataset(str(self.filename), decode_cf=False, engine=self.netcdf_engine, chunks={}, lock=False)
+        self.dataset['decoded'] = False
         # ==== self.dataset temporarily available ==== #
         init_chunk_dict = {}
         if isinstance(self.field_chunksize, dict):
@@ -1817,7 +1818,7 @@ class NetcdfFileBuffer(object):
     #fd_ncdf_data_access = open("netcdf_data_access.log", 'w+')
     #@profile(stream=fd_ncdf_data_access)
     def data_access(self):
-        if self.chunk_mapping is None and self.field_chunksize not in ['auto', False]:
+        if self.chunk_mapping is None and self.field_chunksize not in ['auto', False, None]:
             self.chunk_mapping = {}
             if(isinstance(self.field_chunksize, tuple)):
                 for i in range(len(self.field_chunksize)):
@@ -1921,17 +1922,20 @@ class NetcdfFileBuffer(object):
         #sys.stdout.write("Chunk size mapping: {}\n".format(self.chunk_mapping))
         if self.field_chunksize is False:
             data = np.array(data)
+            #data = np.array(data, order='C')
         else:
             if isinstance(data, da.core.Array):
-                if self.field_chunksize == 'auto' and data.shape[-2:] == data.chunksize[-2:] and not self.chunking_finalized:
-                    #data = np.array(data)
-                    self.chunking_finalized = True
-                    #pass
-                elif self.field_chunksize == 'auto' and self.rechunk_callback_fields is not None and not self.chunking_finalized:
-                    data = data.rechunk(self.field_chunksize)
+                #if self.field_chunksize == 'auto' and data.shape[-2:] == data.chunksize[-2:] and not self.chunking_finalized:
+                #    #data = np.array(data)
+                #    self.chunking_finalized = True
+                #elif self.field_chunksize == 'auto' and self.rechunk_callback_fields is not None and not self.chunking_finalized:
+                if self.field_chunksize == 'auto' and self.rechunk_callback_fields is not None and not self.chunking_finalized:
+                    if data.shape[-2:] != data.chunksize[-2:]:
+                        data = data.rechunk(self.field_chunksize)
                     self.chunk_mapping = {}
                     chunkIndex = 0
-                    for chunkDim in data.numblocks[1:]:
+                    startblock = 0 if self._is_dimension_available('time') is False else 1
+                    for chunkDim in data.numblocks[startblock:]:
                         self.chunk_mapping[chunkIndex] = chunkDim
                         chunkIndex += 1
                     self._chunkmap_to_chunksize()

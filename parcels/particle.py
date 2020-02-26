@@ -10,6 +10,7 @@ from parcels.tools.loggers import logger
 
 __all__ = ['ScipyParticle', 'JITParticle', 'Variable']
 
+indicators_64bit = [np.float64, np.int64, c_void_p]
 
 class Variable(object):
     """Descriptor class that delegates data access to particle data
@@ -47,8 +48,9 @@ class Variable(object):
 
     def is64bit(self):
         """Check whether variable is 64-bit"""
-        return True if self.dtype == np.float64 or self.dtype == np.int64 \
-                       or self.dtype == c_void_p else False
+        #return True if self.dtype == np.float64 or self.dtype == np.int64 or self.dtype == c_void_p else False
+        #return True if self.dtype in [np.float64, np.int64, c_void_p] else False
+        return True if self.dtype in indicators_64bit else False
 
 
 class ParticleType(object):
@@ -57,6 +59,7 @@ class ParticleType(object):
     :param user_vars: Optional list of (name, dtype) tuples for custom variables
     """
 
+    @profile
     def __init__(self, pclass):
         if not isinstance(pclass, type):
             raise TypeError("Class object required to derive ParticleType")
@@ -114,6 +117,7 @@ class _Particle(object):
     """Private base class for all particle types"""
     lastID = 0  # class-level variable keeping track of last Particle ID used
 
+    @profile
     def __init__(self):
         ptype = self.getPType()
         # Explicit initialisation of all particle variables
@@ -215,7 +219,6 @@ class ScipyParticle(_Particle):
         else:
             self._next_dt = next_dt
 
-
 class JITParticle(ScipyParticle):
     """Particle class for JIT-based (Just-In-Time) Particle objects
 
@@ -236,13 +239,14 @@ class JITParticle(ScipyParticle):
     czi = Variable('czi', dtype=np.dtype(c_void_p), to_write=False)
     cti = Variable('cti', dtype=np.dtype(c_void_p), to_write=False)
 
+    @profile
     def __init__(self, *args, **kwargs):
         self._cptr = kwargs.pop('cptr', None)
         if self._cptr is None:
             # Allocate data for a single particle
             ptype = self.getPType()
             # here, np.empty is potentially hazardous - the pointer should always be initialized to 0 (unless data is set)
-            #self._cptr = np.empty(1, dtype=ptype.dtype)[0]
+            self._cptr = np.empty(1, dtype=ptype.dtype)[0]
             self._cptr = np.zeros(1, dtype=ptype.dtype)[0]
         super(JITParticle, self).__init__(*args, **kwargs)
 

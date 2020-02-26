@@ -6,21 +6,19 @@ Date: 11-02-2020
 from parcels import AdvectionEE, AdvectionRK45, AdvectionRK4
 from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, RectilinearZGrid, ErrorCode
 from parcels.field import Field, VectorField, NestedField, SummedField
-#from parcels import plotting
 from parcels import plotTrajectoriesFile_loadedField
 from datetime import timedelta as delta
 import math
 from argparse import ArgumentParser
-import datetime
+#import datetime
 import numpy as np
 import xarray as xr
 import pytest
-import cftime
 import psutil
+import gc
 import os
 import time as ostime
 import matplotlib.pyplot as plt
-#from parcels.tools import perlin2d
 from parcels.tools import perlin3d
 
 import sys
@@ -28,6 +26,7 @@ try:
     from mpi4py import MPI
 except:
     MPI = None
+with_GC = True
 
 
 ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
@@ -44,9 +43,11 @@ Nparticle = int(math.pow(2,10)) # equals to Nparticle = 1024
 #Nparticle = int(math.pow(2,18)) # equals to Nparticle = 262144
 #Nparticle = int(math.pow(2,19)) # equals to Nparticle = 524288
 
-noctaves=4
+noctaves=3
+#noctaves=4 # formerly
 perlinres=(1,32,8)
-shapescale=(8,6,6)
+shapescale=(4,8,8)
+#shapescale=(8,6,6) # formerly
 perlin_persistence=0.3
 a = 10000 * 1e3
 b = 10000 * 1e3
@@ -206,6 +207,9 @@ def perlin_fieldset_from_xarray(periodic_wrap=False):
     else:
         return FieldSet.from_xarray_dataset(ds, variables, dimensions, mesh='flat', allow_time_extrapolation=True)
 
+def perIterGC():
+    gc.collect()
+
 class AgeParticle_JIT(JITParticle):
     age = Variable('age', dtype=np.float64, initial=0.0)
     agetime = Variable('agetime', dtype=np.float64, initial=-1.0)
@@ -347,9 +351,11 @@ if __name__=='__main__':
     postProcessFuncs = [perflog.advance,]
 
     starttime = ostime.time()
-    kernels = pset.Kernel(AdvectionRK4)
+    kernels = pset.Kernel(AdvectionRK4,delete_cfiles=True)
     if agingParticles:
-        kernels +=  Age
+        kernels +=  pset.Kernel(Age,delete_cfiles=True)
+    if with_GC:
+        postProcessFuncs.append(perIterGC)
     if backwardSimulation:
         # ==== backward simulation ==== #
         if args.animate:

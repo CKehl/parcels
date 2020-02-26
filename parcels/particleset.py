@@ -9,6 +9,7 @@ import xarray as xr
 import progressbar
 
 #from memory_profiler import profile
+#from line_profiler import profile
 
 from parcels.compiler import GNUCompiler
 from parcels.field import NestedField
@@ -349,6 +350,11 @@ class ParticleSet(object):
         return self.size
 
     def __getitem__(self, key):
+        #return self.particles[key]
+        return self.retrieve_item(key)
+
+    @profile
+    def retrieve_item(self, key):
         return self.particles[key]
 
     def __setitem__(self, key, value):
@@ -372,6 +378,7 @@ class ParticleSet(object):
             for p, pdata in zip(self.particles, self._particle_data):
                 p._cptr = pdata
 
+    @profile
     def remove(self, indices):
         """Method to remove particles from the ParticleSet, based on their `indices`"""
         if isinstance(indices, collections.Iterable):
@@ -499,7 +506,10 @@ class ParticleSet(object):
         if moviedt is None:
             moviedt = np.infty
         if callbackdt is None:
-            callbackdt = np.min(np.array([np.infty, moviedt, self.repeatdt]))
+            interupt_dts = [np.infty, moviedt, outputdt]
+            if self.repeatdt is not None:
+                interupt_dts.append(self.repeatdt)
+            callbackdt = np.min(np.array(interupt_dts))
         time = _starttime
         if self.repeatdt:
             next_prelease = self.repeat_starttime + (abs(time - self.repeat_starttime) // self.repeatdt + 1) * self.repeatdt * np.sign(dt)
