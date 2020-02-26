@@ -353,7 +353,7 @@ class ParticleSet(object):
         #return self.particles[key]
         return self.retrieve_item(key)
 
-    @profile
+    #@profile
     def retrieve_item(self, key):
         return self.particles[key]
 
@@ -378,7 +378,7 @@ class ParticleSet(object):
             for p, pdata in zip(self.particles, self._particle_data):
                 p._cptr = pdata
 
-    @profile
+    #@profile
     def remove(self, indices):
         """Method to remove particles from the ParticleSet, based on their `indices`"""
         if isinstance(indices, collections.Iterable):

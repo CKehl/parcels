@@ -957,7 +957,7 @@ class Field(object):
         pointers and sizes for this field."""
         return self.get_ctypes_struct()
 
-    @profile
+    #@profile
     def get_ctypes_struct(self):
         # Ctypes struct corresponding to the type definition in parcels.h
         class CField(Structure):

@@ -59,7 +59,7 @@ class ParticleType(object):
     :param user_vars: Optional list of (name, dtype) tuples for custom variables
     """
 
-    @profile
+    #@profile
     def __init__(self, pclass):
         if not isinstance(pclass, type):
             raise TypeError("Class object required to derive ParticleType")
@@ -117,7 +117,7 @@ class _Particle(object):
     """Private base class for all particle types"""
     lastID = 0  # class-level variable keeping track of last Particle ID used
 
-    @profile
+    #@profile
     def __init__(self):
         ptype = self.getPType()
         # Explicit initialisation of all particle variables
@@ -239,7 +239,7 @@ class JITParticle(ScipyParticle):
     czi = Variable('czi', dtype=np.dtype(c_void_p), to_write=False)
     cti = Variable('cti', dtype=np.dtype(c_void_p), to_write=False)
 
-    @profile
+    #@profile
     def __init__(self, *args, **kwargs):
         self._cptr = kwargs.pop('cptr', None)
         if self._cptr is None:
