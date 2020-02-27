@@ -1,6 +1,8 @@
-from parcels import FieldSet
+from parcels import FieldSet, Grid, GridCode
 import numpy as np
 import math
+from os import path
+import xarray as xr
 try:
     from parcels.tools import perlin2d as PERLIN
 except:
@@ -31,6 +33,8 @@ def generate_perlin_testfield():
     # Coordinates of the test fieldset (on A-grid in deg)
     lon = np.linspace(-180.0, 180.0, img_shape[0], dtype=np.float32)
     lat = np.linspace(-90.0, 90.0, img_shape[1], dtype=np.float32)
+    time = np.zeros(1, dtype=np.float64)
+    time = np.array(time) if not isinstance(time, np.ndarray) else time
 
     # Define arrays U (zonal), V (meridional), W (vertical) and P (sea
     # surface height) all on A-grid
@@ -45,9 +49,47 @@ def generate_perlin_testfield():
     V = np.transpose(V, (1,0))
     V = np.expand_dims(V,0)
     data = {'U': U, 'V': V}
-    dimensions = {'time': np.zeros(1, dtype=np.float64), 'lon': lon, 'lat': lat}
+    dimensions = {'time': time, 'lon': lon, 'lat': lat}
     fieldset = FieldSet.from_data(data, dimensions, mesh='flat', transpose=False)
-    fieldset.write("perlinfields")
+    #fieldset.write("perlinfields")
+    write_simple_2Dt(fieldset.U, path.join(path.dirname(__file__), 'perlinfields'), varname='vozocrtx')
+    write_simple_2Dt(fieldset.V, path.join(path.dirname(__file__), 'perlinfields'), varname='vomecrty')
+
+def write_simple_2Dt(field, filename, varname=None):
+    """Write a :class:`Field` to a netcdf file
+
+    :param filename: Basename of the file
+    :param varname: Name of the field, to be appended to the filename"""
+    filepath = str('%s%s.nc' % (filename, field.name))
+    if varname is None:
+        varname = field.name
+
+    # Create DataArray objects for file I/O
+    if field.grid.gtype == GridCode.RectilinearZGrid:
+        nav_lon = xr.DataArray(field.grid.lon + np.zeros((field.grid.ydim, field.grid.xdim), dtype=np.float32),
+                               coords=[('y', field.grid.lat), ('x', field.grid.lon)])
+        nav_lat = xr.DataArray(field.grid.lat.reshape(field.grid.ydim, 1) + np.zeros(field.grid.xdim, dtype=np.float32),
+                               coords=[('y', field.grid.lat), ('x', field.grid.lon)])
+    elif field.grid.gtype == GridCode.CurvilinearZGrid:
+        nav_lon = xr.DataArray(field.grid.lon, coords=[('y', range(field.grid.ydim)),
+                                                      ('x', range(field.grid.xdim))])
+        nav_lat = xr.DataArray(field.grid.lat, coords=[('y', range(field.grid.ydim)),
+                                                      ('x', range(field.grid.xdim))])
+    else:
+        raise NotImplementedError('Field.write only implemented for RectilinearZGrid and CurvilinearZGrid')
+
+    attrs = {'units': 'seconds since ' + str(field.grid.time_origin)} if field.grid.time_origin.calendar else {}
+    time_counter = xr.DataArray(field.grid.time,
+                                dims=['time_counter'],
+                                attrs=attrs)
+    vardata = xr.DataArray(field.data.reshape((field.grid.tdim, field.grid.ydim, field.grid.xdim)),
+                           dims=['time_counter', 'y', 'x'])
+    # Create xarray Dataset and output to netCDF format
+    attrs = {'parcels_mesh': field.grid.mesh}
+    dset = xr.Dataset({varname: vardata}, coords={'nav_lon': nav_lon,
+                                                  'nav_lat': nav_lat,
+                                                  'time_counter': time_counter}, attrs=attrs)
+    dset.to_netcdf(filepath)
 
 if __name__ == "__main__":
     generate_testfieldset(xdim=5, ydim=3, zdim=2, tdim=15)
