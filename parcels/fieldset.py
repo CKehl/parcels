@@ -14,6 +14,7 @@ from parcels.gridset import GridSet
 from parcels.tools.converters import TimeConverter, convert_xarray_time_units
 from parcels.tools.error import TimeExtrapolationError
 from parcels.tools.loggers import logger
+import functools
 
 import sys
 #from memory_profiler import profile
@@ -209,7 +210,8 @@ class FieldSet(object):
 
     @classmethod
     def from_netcdf(cls, filenames, variables, dimensions, indices=None, fieldtype=None,
-                    mesh='spherical', timestamps=None, allow_time_extrapolation=None, time_periodic=False, deferred_load=True, **kwargs):
+                    mesh='spherical', timestamps=None, allow_time_extrapolation=None, time_periodic=False,
+                    deferred_load=True, field_chunksize='auto', **kwargs):
         """Initialises FieldSet object from NetCDF files
 
         :param filenames: Dictionary mapping variables to file(s). The
@@ -276,7 +278,11 @@ class FieldSet(object):
             dims = dimensions[var] if var in dimensions else dimensions
             cls.checkvaliddimensionsdict(dims)
             inds = indices[var] if (indices and var in indices) else indices
+            # this is okay iff the fieldtype needs to be the same for all sub-fields in a fieldset
             fieldtype = fieldtype[var] if (fieldtype and var in fieldtype) else fieldtype
+            # this is bad cause it replaces the original fieldtype with the first-instance field type
+            #field_chunksize = field_chunksize[var] if (field_chunksize and var in field_chunksize) else field_chunksize (see 'indices')
+            chunksize = field_chunksize[var] if (field_chunksize and var in field_chunksize) else field_chunksize
 
             grid = None
             # check if grid has already been processed (i.e. if other fields have same filenames, dimensions and indices)
@@ -301,7 +307,8 @@ class FieldSet(object):
             fields[var] = Field.from_netcdf(paths, (var, name), dims, inds, grid=grid, mesh=mesh, timestamps=timestamps,
                                             allow_time_extrapolation=allow_time_extrapolation,
                                             time_periodic=time_periodic, deferred_load=deferred_load,
-                                            fieldtype=fieldtype, **kwargs)
+                                            fieldtype=fieldtype, field_chunksize=chunksize, **kwargs)
+
         u = fields.pop('U', None)
         v = fields.pop('V', None)
         return cls(u, v, fields=fields)
@@ -309,7 +316,7 @@ class FieldSet(object):
     @classmethod
     def from_nemo(cls, filenames, variables, dimensions, indices=None, mesh='spherical',
                   allow_time_extrapolation=None, time_periodic=False,
-                  tracer_interp_method='cgrid_tracer', **kwargs):
+                  tracer_interp_method='cgrid_tracer', field_chunksize='auto', **kwargs):
         """Initialises FieldSet object from NetCDF files of Curvilinear NEMO fields.
 
         :param filenames: Dictionary mapping variables to file(s). The
@@ -437,12 +444,13 @@ class FieldSet(object):
             kwargs['creation_log'] = 'from_c_grid_dataset'
 
         return cls.from_netcdf(filenames, variables, dimensions, mesh=mesh, indices=indices, time_periodic=time_periodic,
-                               allow_time_extrapolation=allow_time_extrapolation, interp_method=interp_method, **kwargs)
+                               allow_time_extrapolation=allow_time_extrapolation, interp_method=interp_method,
+                               field_chunksize=field_chunksize, **kwargs)
 
     @classmethod
     def from_pop(cls, filenames, variables, dimensions, indices=None, mesh='spherical',
                  allow_time_extrapolation=None, time_periodic=False,
-                 tracer_interp_method='bgrid_tracer', **kwargs):
+                 tracer_interp_method='bgrid_tracer', field_chunksize='auto', **kwargs):
         """Initialises FieldSet object from NetCDF files of POP fields.
             It is assumed that the velocities in the POP fields is in cm/s.
 
@@ -578,11 +586,13 @@ class FieldSet(object):
             kwargs['creation_log'] = 'from_b_grid_dataset'
 
         return cls.from_netcdf(filenames, variables, dimensions, mesh=mesh, indices=indices, time_periodic=time_periodic,
-                               allow_time_extrapolation=allow_time_extrapolation, interp_method=interp_method, **kwargs)
+                               allow_time_extrapolation=allow_time_extrapolation, interp_method=interp_method,
+                               field_chunksize=field_chunksize, **kwargs)
 
     @classmethod
     def from_parcels(cls, basename, uvar='vozocrtx', vvar='vomecrty', indices=None, extra_fields=None,
-                     allow_time_extrapolation=None, time_periodic=False, deferred_load=True, **kwargs):
+                     allow_time_extrapolation=None, time_periodic=False, deferred_load=True,
+                     field_chunksize='auto', **kwargs):
         """Initialises FieldSet data from NetCDF files using the Parcels FieldSet.write() conventions.
 
         :param basename: Base name of the file(s); may contain
@@ -621,7 +631,8 @@ class FieldSet(object):
                           for v in extra_fields.keys()])
         return cls.from_netcdf(filenames, indices=indices, variables=extra_fields,
                                dimensions=dimensions, allow_time_extrapolation=allow_time_extrapolation,
-                               time_periodic=time_periodic, deferred_load=deferred_load, **kwargs)
+                               time_periodic=time_periodic, deferred_load=deferred_load,
+                               field_chunksize=field_chunksize, **kwargs)
 
     @classmethod
     def from_xarray_dataset(cls, ds, variables, dimensions, mesh='spherical', allow_time_extrapolation=None,
@@ -786,6 +797,13 @@ class FieldSet(object):
                 continue
             g = f.grid
             if g.update_status == 'first_updated':  # First load of data
+                if f.data is not None and not isinstance(f.data, DeferredArray):
+                    if not isinstance(f.data, list):
+                        f.data = None
+                    else:
+                        for i in range(len(f.data)):
+                            del f.data[i, :]
+
                 data = da.empty((g.tdim, g.zdim, g.ydim-2*g.meridional_halo, g.xdim-2*g.zonal_halo), dtype=np.float32)
                 f.loaded_time_indices = range(3)
                 for tind in f.loaded_time_indices:
@@ -794,9 +812,9 @@ class FieldSet(object):
                             #fb.dataset.close()
                             fb.close()
                         fb = None
-
                     data = f.computeTimeChunk(data, tind)
                 data = f.rescale_and_set_minmax(data)
+
                 if(isinstance(f.data, DeferredArray)):
                     f.data = DeferredArray()
                 #if(isinstance(f.data, da.core.Array)):
@@ -807,10 +825,6 @@ class FieldSet(object):
                 if len(g.load_chunk) > 0:
                     g.load_chunk = np.where(g.load_chunk == 2, 1, g.load_chunk)
                     g.load_chunk = np.where(g.load_chunk == 3, 0, g.load_chunk)
-                #    for block_id in range(len(g.load_chunk)):
-                #        if g.load_chunk[block_id] == 0:
-                #            f.data_chunks[block_id] = None
-                #            f.c_data_chunks[block_id] = None
 
             elif g.update_status == 'updated':
                 lib = np if isinstance(f.data, np.ndarray) else da
@@ -839,8 +853,11 @@ class FieldSet(object):
                     if lib is da:
                         f.data = lib.concatenate([f.data[1:, :], data], axis=0)
                     else:
-                        #f.data[0] = None
-                        del f.data[0, :]
+                        if not isinstance(f.data, DeferredArray):
+                            if isinstance(f.data, list):
+                                del f.data[0, :]
+                            else:
+                                f.data[0, :] = None
                         f.data[:2, :] = f.data[1:, :]
                         f.data[2, :] = data
                 else:
@@ -848,8 +865,11 @@ class FieldSet(object):
                     if lib is da:
                         f.data = lib.concatenate([data, f.data[:2, :]], axis=0)
                     else:
-                        #f.data[2] = None
-                        del f.data[2, :]
+                        if not isinstance(f.data, DeferredArray):
+                            if isinstance(f.data, list):
+                                del f.data[2, :]
+                            else:
+                                f.data[2, :] = None
                         f.data[1:, :] = f.data[:2, :]
                         f.data[0, :] = data
                 #sys.stdout.write("Fieldset.computeTimeChunk - Field.data.shape before updating chunk status at t={}: {}\n".format(time, f.data.shape))
@@ -866,8 +886,8 @@ class FieldSet(object):
                                 f.data_chunks[block_id][0] = None
                                 f.data_chunks[block_id][:2] = f.data_chunks[block_id][1:]
                                 # == original: == #
-                                # f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2])
-                                f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2], order='C')
+                                f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2])
+                                # f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2], order='C')
                     else:
                         for block_id in range(len(g.load_chunk)):
                             if g.load_chunk[block_id] == 2:
@@ -879,8 +899,8 @@ class FieldSet(object):
                                 f.data_chunks[block_id][2] = None
                                 f.data_chunks[block_id][1:] = f.data_chunks[block_id][:2]
                                 # == original: == #
-                                # f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0])
-                                f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0], order='C')
+                                f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0])
+                                # f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0], order='C')
         # do user-defined computations on fieldset data
         if self.compute_on_defer:
             self.compute_on_defer(self)

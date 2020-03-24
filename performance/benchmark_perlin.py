@@ -26,7 +26,7 @@ try:
     from mpi4py import MPI
 except:
     MPI = None
-with_GC = True
+with_GC = False
 
 
 ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
@@ -261,6 +261,7 @@ if __name__=='__main__':
     parser.add_argument("-V", "--visualize", dest="visualize", action='store_true', default=False, help="Visualize particle trajectories at the end (default: False). Requires -w in addition to take effect.")
     parser.add_argument("-N", "--n_particles", dest="nparticles", type=str, default="2e6", help="number of particles to generate and advect (default: 2e6)")
     parser.add_argument("-m", "--mode", dest="compute_mode", choices=['jit','scipy'], default="jit", help="computation mode = [JIT, SciPp]")
+    parser.add_argument("-G", "--GC", dest="useGC", action='store_true', default=False, help="using a garbage collector (default: false)")
     args = parser.parse_args()
 
     imageFileName=args.imageFileName
@@ -271,6 +272,7 @@ if __name__=='__main__':
     time_in_days = args.time_in_days
     use_xarray = args.use_xarray
     agingParticles = args.aging
+    with_GC = args.useGC
     Nparticle = int(float(eval(args.nparticles)))
     sys.stdout.write("N: {}\n".format(Nparticle))
 
