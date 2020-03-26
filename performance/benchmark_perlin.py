@@ -114,7 +114,7 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
     ax.plot(x, plot_mem, 'x-', label="memory_used [100 MB]")
     #ax.plot(x, nfiledescriptors, '.-', label="open_files [#]")
     plt.xlim([0, 730])
-    plt.ylim([0, 50])
+    plt.ylim([0, 100])
     plt.legend()
     ax.set_xlabel('iteration')
     # ax.set_ylabel('Time spent in pset.execute() [s]')
