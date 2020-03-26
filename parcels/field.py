@@ -1625,9 +1625,9 @@ class NestedField(list):
 
 
 class NetcdfFileBuffer(object):
-    _name_maps = {'lon': ['lon', 'nav_lon', 'x', 'longitude', 'lo', 'ln'],
-                  'lat': ['lat', 'nav_lat', 'y', 'latitude', 'la', 'lt'],
-                  'depth': ['depth', 'depthu', 'depthv', 'depthw', 'depths', 'deptht', 'depthx', 'depthy', 'depthz', 'z', 'd'],
+    _name_maps = {'lon': ['lon', 'nav_lon', 'x', 'longitude', 'lo', 'ln', 'i'],
+                  'lat': ['lat', 'nav_lat', 'y', 'latitude', 'la', 'lt', 'j'],
+                  'depth': ['depth', 'depthu', 'depthv', 'depthw', 'depths', 'deptht', 'depthx', 'depthy', 'depthz', 'z', 'd', 'k', 'w_dep', 'w_deps'],
                   'time': ['time', 'time_count', 'time_counter', 'timer_count', 't']}
     _min_dim_chunksize = 16
 
@@ -1829,7 +1829,8 @@ class NetcdfFileBuffer(object):
     def _is_dimension_available(self, dimension_name):
         if self.dimensions is None or self.dataset is None:
             return False
-        return (dimension_name in self.dimensions and self.dimensions[dimension_name] in self.dataset.dims)
+        # return (dimension_name in self.dimensions and self.dimensions[dimension_name] in self.dataset.dims)
+        return dimension_name in self.dimensions
 
     # ==== REFACTOR THIS ! ==== #
     def _is_dimension_in_dataset(self, dimension_name):

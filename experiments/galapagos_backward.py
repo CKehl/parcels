@@ -7,6 +7,7 @@ import warnings
 import math
 import os
 from  argparse import ArgumentParser
+import dask
 
 if __name__=='__main__':
     parser = ArgumentParser(description="Example of particle advection around an idealised peninsula")
@@ -23,6 +24,7 @@ if __name__=='__main__':
     vfiles = [u.replace('05U.nc', '05V.nc') for u in ufiles]
     meshfile = glob(ddir+'domain/coordinates.nc')
 
+    dask.config.set({'array.chunk-size': '16MiB'})
     nemofiles = {'U': {'lon': meshfile, 'lat': meshfile, 'data': ufiles},
                  'V': {'lon': meshfile, 'lat': meshfile, 'data': vfiles}}
     nemovariables = {'U': 'uo', 'V': 'vo'}
