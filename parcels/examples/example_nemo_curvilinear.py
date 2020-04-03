@@ -137,7 +137,7 @@ def compute_particle_advection(field_set, mode, lonp, latp):
             particle.lat += 11.0
 
     def OutOfBounds_reinitialisation(particle, fieldset, time):
-        particle.lat = 5.2
+        particle.lat = 2.5
         particle.lon = 52.0 + (-1e-3 + np.random.rand() * 2.0 * 1e-3)
 
     pset = ParticleSet.from_list(field_set, ptype[mode], lon=lonp, lat=latp)
@@ -155,7 +155,7 @@ def test_nemo_curvilinear_auto_chunking(mode):
     field_set = FieldSet.from_nemo(filenames, variables, dimensions, field_chunksize='auto')
     assert field_set.U.dataFiles is not field_set.W.dataFiles
     npart = 20
-    lonp = 5.2 * np.ones(npart)
+    lonp = 2.5 * np.ones(npart)
     latp = [i for i in 52.0+(-1e-3+np.random.rand(npart)*2.0*1e-3)]
     compute_particle_advection(field_set, mode, lonp, latp)
     # Nemo sample file dimensions: depthu=75, y=201, x=151
@@ -171,7 +171,7 @@ def test_nemo_curvilinear_no_chunking(mode):
     field_set = FieldSet.from_nemo(filenames, variables, dimensions, field_chunksize=False)
     assert field_set.U.dataFiles is not field_set.W.dataFiles
     npart = 20
-    lonp = 5.2 * np.ones(npart)
+    lonp = 2.5 * np.ones(npart)
     latp = [i for i in 52.0+(-1e-3+np.random.rand(npart)*2.0*1e-3)]
     compute_particle_advection(field_set, mode, lonp, latp)
     # Nemo sample file dimensions: depthu=75, y=201, x=151
@@ -191,7 +191,7 @@ def test_nemo_curvilinear_specific_chunking(mode):
     field_set = FieldSet.from_nemo(filenames, variables, dimensions, field_chunksize=chs)
     assert field_set.U.dataFiles is not field_set.W.dataFiles
     npart = 20
-    lonp = 5.2 * np.ones(npart)
+    lonp = 2.5 * np.ones(npart)
     latp = [i for i in 52.0+(-1e-3+np.random.rand(npart)*2.0*1e-3)]
     compute_particle_advection(field_set, mode, lonp, latp)
     # Nemo sample file dimensions: depthu=75, y=201, x=151

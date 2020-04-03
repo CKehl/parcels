@@ -141,7 +141,65 @@ class FieldSet(object):
             raise NotImplementedError('FieldLists have been replaced by SummedFields. Use the + operator instead of []')
         else:
             setattr(self, name, field)
+
+            if (isinstance(field.data, DeferredArray) or isinstance(field.data, da.core.Array)) and len(self.get_fields()) > 0:
+                # ==== check for inhabiting the same grid, and homogenise the grid chunking ==== #
+                g_set = field.grid
+                grid_chunksize = field.field_chunksize
+                dFiles = field.dataFiles
+                is_processed_grid = False
+                is_same_grid = False
+                for fld in self.get_fields():       # avoid re-processing/overwriting existing and working fields
+                    if fld.grid == g_set:
+                        is_processed_grid |= True
+                        break
+                if not is_processed_grid:
+                    for fld in self.get_fields():
+                        procdims = fld.dimensions
+                        procinds = fld.indices
+                        procpaths = fld.dataFiles
+                        nowpaths = field.dataFiles
+                        if procdims == field.dimensions and procinds == field.indices:
+                            is_same_grid = False
+                            if field.grid.mesh == fld.grid.mesh:
+                                is_same_grid = True
+                            else:
+                                is_same_grid = True
+                                for dim in ['lon', 'lat', 'depth', 'time']:
+                                    if dim in field.dimensions.keys() and dim in fld.dimensions.keys():
+                                        is_same_grid &= (field.dimensions[dim] == fld.dimensions[dim])
+                                fld_g_dims = [fld.grid.tdim, fld.grid.zdim, fld.ydim, fld.xdim]
+                                field_g_dims = [field.grid.tdim, field.grid.zdim, field.grid.ydim, field.grid.xdim]
+                                for i in range(0, len(fld_g_dims)):
+                                    is_same_grid &= (field_g_dims[i] == fld_g_dims[i])
+                            if is_same_grid:
+                                g_set = fld.grid
+                                # ==== check here that the dims of field_chunksize are the same ==== #
+                                if g_set.master_chunksize is not None:
+                                    res = False
+                                    if (isinstance(field.field_chunksize, tuple) and isinstance(g_set.master_chunksize, tuple)) or (isinstance(field.field_chunksize, dict) and isinstance(g_set.master_chunksize, dict)):
+                                        res |= functools.reduce(lambda i, j: i and j, map(lambda m, k: m == k, field.field_chunksize, g_set.master_chunksize), True)
+                                    else:
+                                        res |= (field.field_chunksize == g_set.master_chunksize)
+                                    if res:
+                                        grid_chunksize = g_set.master_chunksize
+                                        if field.grid.master_chunksize is not None:
+                                            logger.warning_once("Trying to initialize a shared grid with different chunking sizes - action prohibited. Replacing requested field_chunksize with grid's master chunksize.")
+                                    else:
+                                        raise ValueError("Conflict between grids of the same fieldset chunksize and requested field chunksize as well as the chunked name dimensions - Please apply the same chunksize to all fields in a shared grid!")
+                                if procpaths == nowpaths:
+                                    dFiles = fld.dataFiles
+                                    break
+                    if is_same_grid:
+                        if field.grid != g_set:
+                            field.grid = g_set
+                        if field.field_chunksize != grid_chunksize:
+                            field.field_chunksize = grid_chunksize
+                        if field.dataFiles != dFiles:
+                            field.dataFiles = dFiles
+
             self.gridset.add_grid(field)
+
             field.fieldset = self
 
     def add_vector_field(self, vfield):
@@ -285,29 +343,49 @@ class FieldSet(object):
             chunksize = field_chunksize[var] if (field_chunksize and var in field_chunksize) else field_chunksize
 
             grid = None
+            grid_chunksize = chunksize
+            dFiles = None
             # check if grid has already been processed (i.e. if other fields have same filenames, dimensions and indices)
             for procvar, _ in fields.items():
                 procdims = dimensions[procvar] if procvar in dimensions else dimensions
                 procinds = indices[procvar] if (indices and procvar in indices) else indices
                 procpaths = filenames[procvar] if isinstance(filenames, dict) and procvar in filenames else filenames
                 nowpaths = filenames[var] if isinstance(filenames, dict) and var in filenames else filenames
-                if procdims == dims and procinds == inds and procpaths == nowpaths:
-                    sameGrid = False
+                # if procdims == dims and procinds == inds and procpaths == nowpaths:
+                if procdims == dims and procinds == inds:
+                    processedGrid = False
                     if ((not isinstance(filenames, dict)) or filenames[procvar] == filenames[var]):
-                        sameGrid = True
+                        processedGrid = True
                     elif isinstance(filenames[procvar], dict):
-                        sameGrid = True
+                        processedGrid = True
                         for dim in ['lon', 'lat', 'depth']:
                             if dim in dimensions:
-                                sameGrid *= filenames[procvar][dim] == filenames[var][dim]
-                    if sameGrid:
+                                processedGrid *= filenames[procvar][dim] == filenames[var][dim]
+                    if processedGrid:
+                        # logger.info("Field '{}' shares a grid with '{}'\n".format(var, procvar))
+                        # print("Field '{}' shares a grid with '{}'\n".format(var, procvar))
                         grid = fields[procvar].grid
-                        kwargs['dataFiles'] = fields[procvar].dataFiles
-                        break
+                        # ==== check here that the dims of field_chunksize are the same ==== #
+                        if grid.master_chunksize is not None:
+                            res = False
+                            if (isinstance(chunksize, tuple) and isinstance(grid.master_chunksize, tuple)) or (isinstance(chunksize, dict) and isinstance(grid.master_chunksize, dict)):
+                                # print("chunksize {} vs. grid.master_chunksize {}".format(chunksize, grid_chunksize))
+                                res |= functools.reduce(lambda i, j: i and j, map(lambda m, k: m == k, chunksize, grid.master_chunksize), True)
+                            else:
+                                res |= (chunksize == grid.master_chunksize)
+                            # if grid.master_chunksize != chunksize:
+                            if res:
+                                grid_chunksize = grid.master_chunksize
+                                logger.warning_once("Trying to initialize a shared grid with different chunking sizes - action prohibited. Replacing requested field_chunksize with grid's master chunksize.")
+                            else:
+                                raise ValueError("Conflict between grids of the same fieldset chunksize and requested field chunksize as well as the chunked name dimensions - Please apply the same chunksize to all fields in a shared grid!")
+                        if procpaths == nowpaths:
+                            dFiles = fields[procvar].dataFiles
+                            break
             fields[var] = Field.from_netcdf(paths, (var, name), dims, inds, grid=grid, mesh=mesh, timestamps=timestamps,
                                             allow_time_extrapolation=allow_time_extrapolation,
                                             time_periodic=time_periodic, deferred_load=deferred_load,
-                                            fieldtype=fieldtype, field_chunksize=chunksize, **kwargs)
+                                            fieldtype=fieldtype, field_chunksize=grid_chunksize, dataFiles=dFiles, **kwargs)
 
         u = fields.pop('U', None)
         v = fields.pop('V', None)
@@ -364,6 +442,7 @@ class FieldSet(object):
                This flag overrides the allow_time_interpolation and sets it to False
         :param tracer_interp_method: Method for interpolation of tracer fields. It is recommended to use 'cgrid_tracer' (default)
                Note that in the case of from_nemo() and from_cgrid(), the velocity fields are default to 'cgrid_velocity'
+        :param field_chunksize: size of the chunks in dask loading
 
         """
 
@@ -427,6 +506,7 @@ class FieldSet(object):
                This flag overrides the allow_time_interpolation and sets it to False
         :param tracer_interp_method: Method for interpolation of tracer fields. It is recommended to use 'cgrid_tracer' (default)
                Note that in the case of from_nemo() and from_cgrid(), the velocity fields are default to 'cgrid_velocity'
+        :param field_chunksize: size of the chunks in dask loading
 
         """
 
@@ -501,6 +581,7 @@ class FieldSet(object):
                This flag overrides the allow_time_interpolation and sets it to False
         :param tracer_interp_method: Method for interpolation of tracer fields. It is recommended to use 'bgrid_tracer' (default)
                Note that in the case of from_pop() and from_bgrid(), the velocity fields are default to 'bgrid_velocity'
+        :param field_chunksize: size of the chunks in dask loading
 
         """
 
@@ -568,6 +649,7 @@ class FieldSet(object):
                This flag overrides the allow_time_interpolation and sets it to False
         :param tracer_interp_method: Method for interpolation of tracer fields. It is recommended to use 'bgrid_tracer' (default)
                Note that in the case of from_pop() and from_bgrid(), the velocity fields are default to 'bgrid_velocity'
+        :param field_chunksize: size of the chunks in dask loading
 
         """
 
@@ -615,6 +697,8 @@ class FieldSet(object):
                fully load them (default: True). It is advised to deferred load the data, since in
                that case Parcels deals with a better memory management during particle set execution.
                deferred_load=False is however sometimes necessary for plotting the fields.
+        :param field_chunksize: size of the chunks in dask loading
+
         """
 
         if extra_fields is None:
