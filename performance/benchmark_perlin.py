@@ -274,7 +274,12 @@ if __name__=='__main__':
     agingParticles = args.aging
     with_GC = args.useGC
     Nparticle = int(float(eval(args.nparticles)))
-    sys.stdout.write("N: {}\n".format(Nparticle))
+    if MPI:
+        mpi_comm = MPI.COMM_WORLD
+        if mpi_comm.Get_rank() == 0:
+            sys.stdout.write("N: {}\n".format(Nparticle))
+    else:
+        sys.stdout.write("N: {}\n".format(Nparticle))
 
     dt_minutes = 60
     #dt_minutes = 20
