@@ -49,8 +49,8 @@ perlinres=(1,32,8)
 shapescale=(4,8,8)
 #shapescale=(8,6,6) # formerly
 perlin_persistence=0.3
-a = 10000 * 1e3
-b = 10000 * 1e3
+a = 1000 * 1e3
+b = 1000 * 1e3
 scalefac = 2.0
 
 # Idea for 4D: perlin3D creates a time-consistent 3D field
@@ -78,7 +78,7 @@ class PerformanceLog():
             mem_B_used_total = mpi_comm.reduce(mem_B_used, op=MPI.SUM, root=0)
             fds_open_total = mpi_comm.reduce(fds_open, op=MPI.SUM, root=0)
             if mpi_rank == 0:
-                self.times_steps.append(ostime.time())
+                self.times_steps.append(MPI.Wtime())
                 self.memory_steps.append(mem_B_used_total)
                 self.fds_steps.append(fds_open_total)
                 self.samples.append(self._iter)
@@ -99,8 +99,8 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
             plot_t.append( (times[i]-global_t_0)*t_scaler )
         else:
             plot_t.append( (times[i]-times[i-1])*t_scaler )
-    #mem_scaler = (1*10)/(1024*1024*1024)
-    mem_scaler = 1 / (1024 * 1024 * 1024)
+    mem_scaler = (1*10)/(1024*1024*1024)
+    #mem_scaler = 1 / (1024 * 1024 * 1024)
     plot_mem = []
     for i in range(len(memory_used)):
         #if i==0:
@@ -111,10 +111,10 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
 
     fig, ax = plt.subplots(1, 1, figsize=(21, 12))
     ax.plot(x, plot_t, 'o-', label="time_spent [100ms]")
-    ax.plot(x, plot_mem, 'x-', label="memory_used [100 MB]")
+    ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [100 MB]")
     #ax.plot(x, nfiledescriptors, '.-', label="open_files [#]")
     plt.xlim([0, 730])
-    plt.ylim([0, 100])
+    plt.ylim([0, 120])
     plt.legend()
     ax.set_xlabel('iteration')
     # ax.set_ylabel('Time spent in pset.execute() [s]')
@@ -229,7 +229,8 @@ class AgeParticle_SciPy(ScipyParticle):
 age_ptype = {'scipy': AgeParticle_SciPy, 'jit': AgeParticle_JIT}
 
 def Age(particle, fieldset, time):
-    if math.fabs(time-particle.agetime) > math.fabs(1.e10 * particle.dt):
+    # if math.fabs(time-particle.agetime) > math.fabs(1.e10 * particle.dt):
+    if particle.state == ErrorCode.Evaluate:
         particle.age = particle.age + math.fabs(particle.dt)
         particle.agetime = time
 
@@ -307,7 +308,8 @@ if __name__=='__main__':
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            global_t_0 = ostime.time()
+            # global_t_0 = ostime.time()
+            global_t_0 = MPI.Wtime()
     else:
         global_t_0 = ostime.time()
 
@@ -357,7 +359,14 @@ if __name__=='__main__':
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
 
-    starttime = ostime.time()
+    if MPI:
+        mpi_comm = MPI.COMM_WORLD
+        mpi_rank = mpi_comm.Get_rank()
+        if mpi_rank==0:
+            # global_t_0 = ostime.time()
+            starttime = MPI.Wtime()
+    else:
+        starttime = ostime.time()
     kernels = pset.Kernel(AdvectionRK4,delete_cfiles=True)
     if agingParticles:
         kernels +=  pset.Kernel(Age,delete_cfiles=True)
@@ -375,7 +384,14 @@ if __name__=='__main__':
             pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(minutes=dt_minutes), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: delete_func}, postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=12), moviedt=delta(hours=6), movie_background_field=fieldset.U)
         else:
             pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(minutes=dt_minutes), output_file=output_file, recovery={ErrorCode.ErrorOutOfBounds: delete_func}, postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=12))
-    endtime = ostime.time()
+    if MPI:
+        mpi_comm = MPI.COMM_WORLD
+        mpi_rank = mpi_comm.Get_rank()
+        if mpi_rank==0:
+            # global_t_0 = ostime.time()
+            endtime = MPI.Wtime()
+    else:
+        endtime = ostime.time()
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
