@@ -261,6 +261,7 @@ if __name__=='__main__':
     parser.add_argument("-A", "--animate", dest="animate", action='store_true', default=False, help="animate the particle trajectories during the run or not (default: False).")
     parser.add_argument("-V", "--visualize", dest="visualize", action='store_true', default=False, help="Visualize particle trajectories at the end (default: False). Requires -w in addition to take effect.")
     parser.add_argument("-N", "--n_particles", dest="nparticles", type=str, default="2e6", help="number of particles to generate and advect (default: 2e6)")
+    parser.add_argument("-sN", "--start_n_particles", dest="start_nparticles", type=str, default="96", help="(optional) number of particles generated per release cycle (if --rt is set) (default: 96)")
     parser.add_argument("-m", "--mode", dest="compute_mode", choices=['jit','scipy'], default="jit", help="computation mode = [JIT, SciPp]")
     parser.add_argument("-G", "--GC", dest="useGC", action='store_true', default=False, help="using a garbage collector (default: false)")
     args = parser.parse_args()
@@ -275,6 +276,7 @@ if __name__=='__main__':
     agingParticles = args.aging
     with_GC = args.useGC
     Nparticle = int(float(eval(args.nparticles)))
+    start_N_particles = int(float(eval(args.start_nparticles)))
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         if mpi_comm.Get_rank() == 0:
@@ -328,24 +330,24 @@ if __name__=='__main__':
         # ==== backward simulation ==== #
         if agingParticles:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(96, 1) * a, lat=np.random.rand(96, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
             else:
                 pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
         else:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(96, 1) * a, lat=np.random.rand(96, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
             else:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
     else:
         # ==== forward simulation ==== #
         if agingParticles:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(96, 1) * a, lat=np.random.rand(96, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
             else:
                 pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
         else:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(96, 1) * a, lat=np.random.rand(96, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
             else:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
 
