@@ -552,6 +552,7 @@ class ParticleSet(object):
                 time = min(next_prelease, next_input, next_output, next_movie, next_callback, endtime)
             else:
                 time = max(next_prelease, next_input, next_output, next_movie, next_callback, endtime)
+            # ==== compute ==== #
             self.kernel.execute(self, endtime=time, dt=dt, recovery=recovery, output_file=output_file, execute_once=execute_once)
             if abs(time-next_prelease) < tol:
                 pset_new = ParticleSet(fieldset=self.fieldset, time=time, lon=self.repeatlon,
@@ -562,11 +563,12 @@ class ParticleSet(object):
                     p.dt = dt
                 self.add(pset_new)
                 next_prelease += self.repeatdt * np.sign(dt)
-            if abs(time-next_output) < tol:
+            # ==== end compute ==== #
+            if abs(time-next_output) < tol:  # ==== IO ==== #
                 if output_file:
                     output_file.write(self, time)
                 next_output += outputdt * np.sign(dt)
-            if abs(time-next_movie) < tol:
+            if abs(time-next_movie) < tol:  # ==== Plotting ==== #
                 self.show(field=movie_background_field, show_time=time, animation=True)
                 next_movie += moviedt * np.sign(dt)
             # ==== insert post-process here to also allow for memory clean-up via external func ==== #
@@ -575,11 +577,11 @@ class ParticleSet(object):
                     for extFunc in postIterationCallbacks:
                         extFunc()
                 next_callback += callbackdt * np.sign(dt)
-            if time != endtime:
+            if time != endtime:  # ==== IO ==== #
                 next_input = self.fieldset.computeTimeChunk(time, dt)
             if dt == 0:
                 break
-            if verbose_progress:
+            if verbose_progress:  # ==== Plotting ==== #
                 pbar.update(abs(time - _starttime))
 
         if output_file:
