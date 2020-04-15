@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 #import datetime
 import numpy as np
 import xarray as xr
-import pytest
+# import pytest
 import psutil
 import gc
 import os
