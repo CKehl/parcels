@@ -19,7 +19,7 @@ if __name__=='__main__':
 
     ddir_head = "/data/oceanparcels/input_data"
     ddir = os.path.join(ddir_head,"NEMO-MEDUSA/ORCA0083-N006/")
-    odir = "/scratch/ckehl/experiments"
+    odir = "/scratch/ckehl/experiments/galapagos"
     ufiles = sorted(glob(ddir+'means/ORCA0083-N06_20[00-10]*d05U.nc'))
     vfiles = [u.replace('05U.nc', '05V.nc') for u in ufiles]
     meshfile = glob(ddir+'domain/coordinates.nc')
