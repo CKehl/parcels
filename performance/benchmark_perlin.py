@@ -14,6 +14,7 @@ from argparse import ArgumentParser
 import numpy as np
 import xarray as xr
 # import pytest
+import fnmatch
 import psutil
 import gc
 import os
@@ -288,8 +289,11 @@ if __name__=='__main__':
     #dt_minutes = 20
 
     odir = ""
-    if os.uname()[1] in ['science-bs35', 'science-bs36']:
+    if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
         odir = "/scratch/{}/experiments".format(os.environ['USER'])
+    elif fnmatch.fnmatchcase(os.uname()[1], "int?.*"):  # Cartesius
+        CARTESIUS_SCRATCH_USERNAME = 'ckehl'
+        odir = "/scratch/shared/{}/experiments/parcels".format(CARTESIUS_SCRATCH_USERNAME)
     else:
         odir = "/var/scratch/experiments"
 
