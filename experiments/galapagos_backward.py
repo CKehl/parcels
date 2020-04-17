@@ -32,14 +32,15 @@ if __name__=='__main__':
     # ==== Because the stokes data is a different grid, we actually need to define the chunking ==== #
     # fieldset_nemo = FieldSet.from_nemo(nemofiles, nemovariables, nemodimensions, field_chunksize='auto')
     chs = {'time_counter': 1, 'depthu': 75, 'depthv': 75, 'depthw': 75, 'deptht': 75, 'y': 100, 'x': 100}
-    fieldset_nemo = FieldSet.from_nemo(nemofiles, nemovariables, nemodimensions, field_chunksize=chs, time_periodic=delta(days=366))
+    fieldset_nemo = FieldSet.from_nemo(nemofiles, nemovariables, nemodimensions, field_chunksize=chs)  # , time_periodic=delta(days=366)
 
     if wstokes:
         stokesfiles = sorted(glob(ddir_head+"/WaveWatch3data/CFSR/WW3-*_uss.nc"))
-        stokesdimensions = {'lat': 'latitude', 'lon': 'longitude', 'time': 'time'}
+        stokesdimensions = {'lon': 'longitude', 'lat': 'latitude', 'time': 'time'}
         stokesvariables = {'U': 'uuss', 'V': 'vuss'}
+        stokeschs = {'time': 1, 'latitude': 32, 'longitude': 16}
         # fieldset_stokes = FieldSet.from_netcdf(stokesfiles, stokesvariables, stokesdimensions)
-        fieldset_stokes = FieldSet.from_netcdf(stokesfiles, stokesvariables, stokesdimensions, field_chunksize=chs, time_periodic=delta(days=366))
+        fieldset_stokes = FieldSet.from_netcdf(stokesfiles, stokesvariables, stokesdimensions, field_chunksize=stokeschs, time_periodic=delta(days=366))
         fieldset_stokes.add_periodic_halo(zonal=True, meridional=False, halosize=5)
 
         fieldset = FieldSet(U=fieldset_nemo.U+fieldset_stokes.U, V=fieldset_nemo.V+fieldset_stokes.V)
