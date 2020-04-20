@@ -38,12 +38,37 @@ warnings.simplefilter("ignore", category=xr.SerializationWarning)
 global_t_0 = 0
 odir = ""
 if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
-    odir = "/scratch/{}/experiments".format(os.environ['USER'])
+    odir = "/scratch/{}/experiments/palaeo-parcels/BENCHres".format(os.environ['USER'])
 elif fnmatch.fnmatchcase(os.uname()[1], "int?.*"):  # Cartesius
     CARTESIUS_SCRATCH_USERNAME = 'ckehl'
-    odir = "/scratch/shared/{}/experiments/parcels".format(CARTESIUS_SCRATCH_USERNAME)
+    odir = "/scratch/shared/{}/experiments/palaeo-parcels/BENCHres".format(CARTESIUS_SCRATCH_USERNAME)
 else:
-    odir = "/var/scratch/experiments"
+    odir = "/var/scratch/experiments/palaeo-parcels/BENCHres"
+
+class PerformanceLog():
+    samples = []
+    times_steps = []
+    memory_steps = []
+    _iter = 0
+
+    def advance(self):
+        if MPI:
+            mpi_comm = MPI.COMM_WORLD
+            mpi_rank = mpi_comm.Get_rank()
+            process = psutil.Process(os.getpid())
+            mem_B_used = process.memory_info().rss
+            mem_B_used_total = mpi_comm.reduce(mem_B_used, op=MPI.SUM, root=0)
+            if mpi_rank == 0:
+                self.times_steps.append(MPI.Wtime())
+                self.memory_steps.append(mem_B_used_total)
+                self.samples.append(self._iter)
+                self._iter+=1
+        else:
+            process = psutil.Process(os.getpid())
+            self.times_steps.append(ostime.time())
+            self.memory_steps.append(process.memory_info().rss)
+            self.samples.append(self._iter)
+            self._iter+=1
 
 def plot(x, total_times, compute_times, io_times, memory_used, imageFilePath):
     plot_t = []
@@ -251,7 +276,20 @@ def initials(particle, fieldset, time):
         particle.lat0 = particle.lat
         particle.depth0 = particle.depth
 
+
+
+
+
 def run_corefootprintparticles(dirwrite,outfile,lonss,latss,dep):
+    if MPI:
+        mpi_comm = MPI.COMM_WORLD
+        mpi_rank = mpi_comm.Get_rank()
+        if mpi_rank==0:
+            # global_t_0 = ostime.time()
+            global_t_0 = MPI.Wtime()
+    else:
+        global_t_0 = ostime.time()
+
     ufiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05U.nc'))
     vfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05V.nc'))
     wfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05W.nc'))    
@@ -284,11 +322,57 @@ def run_corefootprintparticles(dirwrite,outfile,lonss,latss,dep):
     pset = ParticleSet_Benchmark.from_list(fieldset=fieldset, pclass=DinoParticle, lon=lonss.tolist(), lat=latss.tolist(),
                        time = time)
 
+    perflog = PerformanceLog()
+    postProcessFuncs = [perflog.advance,]
+
     pfile = ParticleFile(dirwrite + outfile, pset, write_ondelete=True)
     kernels = pset.Kernel(initials) + Sink + Age  + pset.Kernel(AdvectionRK4_3D) + Age
-    # pset.execute(kernels, runtime=delta(days=365*9), dt=delta(minutes=-20), output_file=pfile, verbose_progress=False, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
-    pset.execute(kernels, runtime=delta(days=365), dt=delta(hours=-12), output_file=pfile, verbose_progress=True,
-                 recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+
+    if MPI:
+        mpi_comm = MPI.COMM_WORLD
+        mpi_rank = mpi_comm.Get_rank()
+        if mpi_rank==0:
+            # global_t_0 = ostime.time()
+            starttime = MPI.Wtime()
+    else:
+        starttime = ostime.time()
+
+    # pset.execute(kernels, runtime=delta(days=365*9), dt=delta(minutes=-20), output_file=pfile, verbose_progress=False,
+    # recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs)
+    pset.execute(kernels, runtime=delta(days=365), dt=delta(hours=-12), output_file=pfile, verbose_progress=False,
+                 recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs)
+    if MPI:
+        mpi_comm = MPI.COMM_WORLD
+        mpi_rank = mpi_comm.Get_rank()
+        if mpi_rank==0:
+            # global_t_0 = ostime.time()
+            endtime = MPI.Wtime()
+    else:
+        endtime = ostime.time()
+
+    if MPI:
+        mpi_comm = MPI.COMM_WORLD
+        if mpi_comm.Get_rank() == 0:
+            dt_time = []
+            for i in range(len(perflog.times_steps)):
+                if i==0:
+                    dt_time.append( (perflog.times_steps[i]-global_t_0) )
+                else:
+                    dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
+            sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
+            avg_time = np.mean(np.array(dt_time, dtype=np.float64))
+            sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
+    else:
+        dt_time = []
+        for i in range(len(perflog.times_steps)):
+            if i == 0:
+                dt_time.append((perflog.times_steps[i] - global_t_0))
+            else:
+                dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
+        sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
+        avg_time = np.mean(np.array(dt_time, dtype=np.float64))
+        sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))
+
     pfile.close()
 
 
