@@ -36,7 +36,7 @@ if __name__=='__main__':
 
     if wstokes:
         # stokesfiles = sorted(glob(ddir_head+"/WaveWatch3data/CFSR/WW3-*_uss.nc"))
-        stokesfiles = sorted(glob(ddir_head+"/WaveWatch3data/CFSR/WW3-GLOB-30M_20[00-10][01-12]_uss.nc"))
+        stokesfiles = sorted(glob(ddir_head+"/WaveWatch3data/CFSR/WW3-GLOB-30M_20[00-10]*_uss.nc"))
         stokesdimensions = {'lon': 'longitude', 'lat': 'latitude', 'time': 'time'}
         stokesvariables = {'U': 'uuss', 'V': 'vuss'}
         stokeschs = {'time': 1, 'latitude': 32, 'longitude': 16}
