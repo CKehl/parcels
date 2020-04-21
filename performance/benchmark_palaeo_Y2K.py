@@ -4,12 +4,12 @@ Created on Fri Oct 13 15:31:22 2017
 
 @author: nooteboom
 """
-
 from parcels import (FieldSet, JITParticle, AdvectionRK4_3D,
                      Field, ErrorCode, ParticleFile, Variable)
 # from parcels import ParticleSet
 from parcels import ParticleSet_Benchmark
 
+from argparse import ArgumentParser
 from datetime import timedelta as delta
 from datetime import datetime
 import numpy as np
@@ -17,10 +17,10 @@ import math
 from glob import glob
 import sys
 import pandas as pd
-import dask
+# import dask
 
 import psutil
-import gc
+# import gc
 import os
 import time as ostime
 import matplotlib.pyplot as plt
@@ -37,13 +37,6 @@ warnings.simplefilter("ignore", category=xr.SerializationWarning)
 
 global_t_0 = 0
 odir = ""
-if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
-    odir = "/scratch/{}/experiments/palaeo-parcels/BENCHres".format(os.environ['USER'])
-elif fnmatch.fnmatchcase(os.uname()[1], "int?.*"):  # Cartesius
-    CARTESIUS_SCRATCH_USERNAME = 'ckehl'
-    odir = "/scratch/shared/{}/experiments/palaeo-parcels/BENCHres".format(CARTESIUS_SCRATCH_USERNAME)
-else:
-    odir = "/var/scratch/experiments/palaeo-parcels/BENCHres"
 
 class PerformanceLog():
     samples = []
@@ -115,32 +108,6 @@ def plot(x, total_times, compute_times, io_times, memory_used, imageFilePath):
     sys.stdout.write("cumulative compute time: {}".format(cum_ct))
     sys.stdout.write("cumulative I/O time: {}".format(cum_iot))
 
-
-# dirread_pal = '/projects/0/palaeo-parcels/NEMOdata/'
-dirread_pal = '/scratch/ckehl/experiments/palaeo-parcels/NEMOdata/'
-dirread_top = '/data/oceanparcels/input_data/NEMO-MEDUSA/ORCA0083-N006/'
-dirread_top_bgc = '/data/oceanparcels/input_data/NEMO-MEDUSA/ORCA0083-N006/'
-
-# sp = float(sys.argv[1])  # The sinkspeed m/day
-sp = 11.0 # The sinkspeed m/day
-dd = 10.  # The dwelling depth
-
-dirwrite = '/scratch/ckehl/experiments/palaeo-parcels/NEMOres/assemblages/particlefiles/sp%d_dd%d/'%(int(sp),int(dd))
-
-latsz = np.array(pd.read_csv('/scratch/ckehl/experiments/palaeo-parcels/TF_locationsSurfaceSamples_forPeter.csv').Latitude.tolist())
-lonsz = np.array(pd.read_csv('/scratch/ckehl/experiments/palaeo-parcels/TF_locationsSurfaceSamples_forPeter.csv').Longitude.tolist())
-numlocs = np.logical_and(latsz<1000, lonsz<1000)
-latsz = latsz[numlocs]; lonsz = lonsz[numlocs];
-
-assert ~(np.isnan(latsz)).any(), 'locations should not contain any NaN values'
-dep = dd * np.ones(latsz.shape)
-
-times = np.array([datetime(2000, 12, 25) - delta(days=x) for x in range(0,int(365),3)])
-time = np.empty(shape=(0)); lons = np.empty(shape=(0)); lats = np.empty(shape=(0))
-for i in range(len(times)):
-    lons = np.append(lons,lonsz)
-    lats = np.append(lats, latsz)
-    time = np.append(time, np.full(len(lonsz),times[i])) 
 
 def set_nemo_fieldset(ufiles, vfiles, wfiles, tfiles, pfiles, dfiles, ifiles, bfile, mesh_mask='/scratch/ckehl/experiments/palaeo-parcels/NEMOdata/domain/coordinates.nc'):
     filenames = { 'U': {'lon': mesh_mask,
@@ -278,9 +245,76 @@ def initials(particle, fieldset, time):
 
 
 
+if __name__ == "__main__":
+    #run_corefootprintparticles(dirwrite, outfile, lons, lats, dep)
+
+    parser = ArgumentParser(description="Example of particle advection using in-memory stommel test case")
+    parser.add_argument("-i", "--imageFileName", dest="imageFileName", type=str, default="mpiChunking_plot_MPI.png", help="image file name of the plot")
+    parser.add_argument("-p", "--periodic", dest="periodic", action='store_true', default=False, help="enable/disable periodic wrapping (else: extrapolation)")
+    parser.add_argument("-sp", "--sinking_speed", dest="sp", type=float, default=11.0, help="set the simulation sinking speed in [m/day] (default: 11.0)")
+    parser.add_argument("-dd", "--dwelling_depth", dest="dd", type=float, default=10.0, help="set the dwelling depth (i.e. ocean surface depth) in [m] (default: 10.0)")
+    # parser.add_argument("-t", "--time_in_days", dest="time_in_days", type=int, default=365, help="runtime in days (default: 365)")
+    parser.add_argument("-t", "--time_in_days", dest="time_in_days", type=str, default="1*365", help="runtime in days (default: 1*365)")
+    parser.add_argument("-G", "--GC", dest="useGC", action='store_true', default=False, help="using a garbage collector (default: false)")
+    args = parser.parse_args()
+
+    sp = args.sp # The sinkspeed m/day
+    dd = args.dd  # The dwelling depth
+
+    headdir = ""
+    odir = ""
+    dirread_pal = ""
+    datahead = ""
+    dirread_top = ""
+    dirread_top_bgc = ""
+    if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
+        headdir = "/scratch/{}/experiments/palaeo-parcels".format(os.environ['USER'])
+        odir = os.path.join(headdir,"BENCHres")
+        dirread_pal = os.path.join(headdir,'NEMOdata')
+        datahead = "/data/oceanparcels/input_data"
+        dirread_top = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/')
+        dirread_top_bgc = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/')
+    elif fnmatch.fnmatchcase(os.uname()[1], "int?.*"):  # Cartesius
+        CARTESIUS_SCRATCH_USERNAME = 'ckehl'
+        headdir = "/scratch/shared/{}/experiments/palaeo-parcels".format(CARTESIUS_SCRATCH_USERNAME)
+        odir = os.path.join(headdir, "/BENCHres")
+        dirread_pal = os.path.join(headdir,'NEMOdata')
+        datahead = "/projects/0/topios/hydrodynamic_data"
+        dirread_top = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/')
+        dirread_top_bgc = os.path.join(datahead, 'NEMO-MEDUSA_BGC/ORCA0083-N006/')
+    else:
+        headdir = "/var/scratch/nooteboom"
+        odir = os.path.join(headdir, "BENCHres")
+        dirread_pal = headdir
+        datahead = "/data"
+        dirread_top = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/')
+        dirread_top_bgc = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/')
 
 
-def run_corefootprintparticles(dirwrite,outfile,lonss,latss,dep):
+    # dirread_pal = '/projects/0/palaeo-parcels/NEMOdata/'
+
+    outfile = 'grid_dd' + str(int(dd)) + '_sp' + str(int(sp))
+    dirwrite = odir+'/sp%d_dd%d/'%(int(sp),int(dd))
+    if not os.path.exists(dirwrite):
+        os.mkdir(dirwrite)
+
+    latsz = np.array(pd.read_csv(os.path.join(headdir,"TF_locationsSurfaceSamples_forPeter.csv")).Latitude.tolist())
+    lonsz = np.array(pd.read_csv(os.path.join(headdir,"TF_locationsSurfaceSamples_forPeter.csv")).Longitude.tolist())
+    numlocs = np.logical_and(latsz<1000, lonsz<1000)
+    latsz = latsz[numlocs]
+    lonsz = lonsz[numlocs]
+
+    assert ~(np.isnan(latsz)).any(), 'locations should not contain any NaN values'
+    dep = dd * np.ones(latsz.shape)
+
+    times = np.array([datetime(2000, 12, 25) - delta(days=x) for x in range(0,int(365),3)])
+    time = np.empty(shape=(0)); lons = np.empty(shape=(0)); lats = np.empty(shape=(0))
+    for i in range(len(times)):
+        lons = np.append(lons,lonsz)
+        lats = np.append(lats, latsz)
+        time = np.append(time, np.full(len(lonsz),times[i]))
+
+
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
@@ -290,13 +324,13 @@ def run_corefootprintparticles(dirwrite,outfile,lonss,latss,dep):
     else:
         global_t_0 = ostime.time()
 
-    ufiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05U.nc'))
-    vfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05V.nc'))
-    wfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05W.nc'))    
-    tfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05T.nc'))
-    pfiles = sorted(glob(dirread_top_bgc + 'means/ORCA0083-N06_200012??d05P.nc'))    
-    dfiles = sorted(glob(dirread_top_bgc + 'means/ORCA0083-N06_200012??d05D.nc'))    
-    ifiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_200012??d05I.nc'))
+    ufiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05U.nc'))
+    vfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05V.nc'))
+    wfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05W.nc'))
+    tfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05T.nc'))
+    pfiles = sorted(glob(dirread_top_bgc + 'means/ORCA0083-N06_2000????d05P.nc'))
+    dfiles = sorted(glob(dirread_top_bgc + 'means/ORCA0083-N06_2000????d05D.nc'))
+    ifiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05I.nc'))
     bfile = dirread_top + 'domain/bathymetry_ORCA12_V3.3.nc'
 
     fieldset = set_nemo_fieldset(ufiles, vfiles, wfiles, tfiles, pfiles, dfiles, ifiles, bfile, dirread_pal + 'domain/coordinates.nc')
@@ -319,7 +353,7 @@ def run_corefootprintparticles(dirwrite,outfile,lonss,latss,dep):
         ICEPRES = Variable('ICEPRES',dtype=np.float32, initial=np.nan)
         CO2 = Variable('CO2',dtype=np.float32, initial=np.nan)
         
-    pset = ParticleSet_Benchmark.from_list(fieldset=fieldset, pclass=DinoParticle, lon=lonss.tolist(), lat=latss.tolist(),
+    pset = ParticleSet_Benchmark.from_list(fieldset=fieldset, pclass=DinoParticle, lon=lonsz.tolist(), lat=latsz.tolist(),
                        time = time)
 
     perflog = PerformanceLog()
@@ -380,12 +414,12 @@ def run_corefootprintparticles(dirwrite,outfile,lonss,latss,dep):
         mpi_comm = MPI.COMM_WORLD
         mpi_comm.Barrier()
         if mpi_comm.Get_rank() == 0:
-            plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, imageFileName))
+            plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
     else:
-        plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, imageFileName))
+        plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
 
     print('Execution finished')
 
-outfile = 'grid_dd'+str(int(dd)) +'_sp'+str(int(sp))
-run_corefootprintparticles(dirwrite,outfile,lons,lats,dep)
+
+
 
