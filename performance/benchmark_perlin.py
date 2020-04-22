@@ -22,6 +22,8 @@ import time as ostime
 import matplotlib.pyplot as plt
 from parcels.tools import perlin3d
 
+from parcels import rng as random
+
 import sys
 try:
     from mpi4py import MPI
@@ -29,7 +31,7 @@ except:
     MPI = None
 with_GC = False
 
-
+pset = None
 ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
 method = {'RK4': AdvectionRK4, 'EE': AdvectionEE, 'RK45': AdvectionRK45}
 global_t_0 = 0
@@ -66,7 +68,8 @@ class PerformanceLog():
     samples = []
     times_steps = []
     memory_steps = []
-    fds_steps = []
+    #self.fds_steps = []
+    Nparticles_step = []
     _iter = 0
 
     def advance(self):
@@ -75,24 +78,31 @@ class PerformanceLog():
             mpi_rank = mpi_comm.Get_rank()
             process = psutil.Process(os.getpid())
             mem_B_used = process.memory_info().rss
-            fds_open = len(process.open_files())
+            #fds_open = len(process.open_files())
             mem_B_used_total = mpi_comm.reduce(mem_B_used, op=MPI.SUM, root=0)
-            fds_open_total = mpi_comm.reduce(fds_open, op=MPI.SUM, root=0)
+            #fds_open_total = mpi_comm.reduce(fds_open, op=MPI.SUM, root=0)
+            if pset is not None:
+                Nparticles_local = len(pset)
+                Nparticles_global = mpi_comm.reduce(Nparticles_local, op=MPI.SUM, root=0)
             if mpi_rank == 0:
                 self.times_steps.append(MPI.Wtime())
                 self.memory_steps.append(mem_B_used_total)
-                self.fds_steps.append(fds_open_total)
+            #    self.fds_steps.append(fds_open_total)
+                self.Nparticles_step.append(Nparticles_global)
                 self.samples.append(self._iter)
                 self._iter+=1
         else:
             process = psutil.Process(os.getpid())
             self.times_steps.append(ostime.time())
             self.memory_steps.append(process.memory_info().rss)
-            self.fds_steps.append(len(process.open_files()))
+            #self.fds_steps.append(len(process.open_files()))
+            if pset is not None:
+                self.Nparticles_step.append(len(pset))
             self.samples.append(self._iter)
             self._iter+=1
 
-def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
+#def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
+def plot(x, times, memory_used, nparts, imageFilePath):
     plot_t = []
     t_scaler = 1. * 10./1.0
     for i in range(len(times)):
@@ -109,11 +119,20 @@ def plot(x, times, memory_used, nfiledescriptors, imageFilePath):
         #else:
         #    plot_mem.append((memory_used[i] - memory_used[i-1]) * mem_scaler)
         plot_mem.append(memory_used[i] * mem_scaler)
+    npart_scaler = 1.0 / 1000.0
+    plot_npart = []
+    for i in range(len(nparts)):
+        #if i==0:
+        #    plot_mem.append((memory_used[i]-global_m_0)*mem_scaler)
+        #else:
+        #    plot_mem.append((memory_used[i] - memory_used[i-1]) * mem_scaler)
+        plot_npart.append(nparts[i] * npart_scaler)
+
 
     fig, ax = plt.subplots(1, 1, figsize=(21, 12))
     ax.plot(x, plot_t, 'o-', label="time_spent [100ms]")
     ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [100 MB]")
-    #ax.plot(x, nfiledescriptors, '.-', label="open_files [#]")
+    ax.plot(x, plot_npart, '-', label="sim. particles [# 1000]")
     plt.xlim([0, 730])
     plt.ylim([0, 120])
     plt.legend()
@@ -213,39 +232,44 @@ def perIterGC():
 
 class AgeParticle_JIT(JITParticle):
     age = Variable('age', dtype=np.float64, initial=0.0)
-    agetime = Variable('agetime', dtype=np.float64, initial=-1.0)
+    life_expectancy = Variable('life_expectancy', dtype=np.float64, initial=np.finfo(np.float64).max)
+    initialized_dynamic = Variable('initialized_dynamic', dtype=np.int32, initial=0)
+    #agetime = Variable('agetime', dtype=np.float64, initial=-1.0)
     #def __init__(self, *args, **kwargs):
     #    type(self).age.initial=0.
-    #    type(self).agetime.initial=-1.0
+    ##    type(self).agetime.initial=-1.0
+    #    type(self).life_expectancy = np.finfo(np.float64).max if 'life_expectancy' not in kwargs else kwargs['life_expectancy']
+    #    type(self).initialized_dynamic = 0 if 'initialized_dynamic' not in kwargs else kwargs['initialized_dynamic']
     #    super(AgeParticle_JIT, self).__init__(*args, **kwargs)
 
 class AgeParticle_SciPy(ScipyParticle):
     age = Variable('age', dtype=np.float64, initial=0.0)
-    agetime = Variable('agetime', dtype=np.float64, initial=-1.0)
+    life_expectancy = Variable('life_expectancy', dtype=np.float64, initial=np.finfo(np.float64).max)
+    initialized_dynamic = Variable('initialized_dynamic', dtype=np.int32, initial=0)
+    #agetime = Variable('agetime', dtype=np.float64, initial=-1.0)
     #def __init__(self, *args, **kwargs):
     #    type(self).age.initial=0.
-    #    type(self).agetime.initial=-1.0
+    ##    type(self).agetime.initial=-1.0
+    #    type(self).life_expectancy = np.finfo(np.float64).max if 'life_expectancy' not in kwargs else kwargs['life_expectancy']
+    #    type(self).initialized_dynamic = 0 if 'initialized_dynamic' not in kwargs else kwargs['initialized_dynamic']
     #    super(AgeParticle_SciPy, self).__init__(*args, **kwargs)
 
 age_ptype = {'scipy': AgeParticle_SciPy, 'jit': AgeParticle_JIT}
+
+def initialize(particle, fieldset, time):
+    if particle.initialized_dynamic < 1:
+        particle.life_expectancy = random.uniform(.0, particle.life_expectancy)
+        particle.initialized_dynamic = 1
 
 def Age(particle, fieldset, time):
     # if math.fabs(time-particle.agetime) > math.fabs(1.e10 * particle.dt):
     if particle.state == ErrorCode.Evaluate:
         particle.age = particle.age + math.fabs(particle.dt)
-        particle.agetime = time
+    #    particle.agetime = time
 
-        if particle.age > (60.0*60.0*24.0*14):
+        # if particle.age > (60.0*60.0*24.0*14):
+        if particle.age > particle.life_expectancy:
             particle.delete()
-
-#def OldAge(particle, fieldset, time):
-#    if particle.age > (60.0*60.0*24.0*62.0):
-#        particle.delete()
-#    else:
-#        particle.age = particle.age + math.fabs(particle.dt)
-#    #particle.age = particle.age + math.fabs(particle.dt)
-#    #if particle.age > (60.0 * 60.0 * 24.0 * 62.0):
-#    #    particle.delete()
 
 if __name__=='__main__':
     parser = ArgumentParser(description="Example of particle advection using in-memory stommel test case")
@@ -290,7 +314,8 @@ if __name__=='__main__':
 
     odir = ""
     if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
-        odir = "/scratch/{}/experiments".format(os.environ['USER'])
+        # odir = "/scratch/{}/experiments".format(os.environ['USER'])
+        odir = "/scratch/{}/experiments".format("ckehl")
     elif fnmatch.fnmatchcase(os.uname()[1], "int?.*"):  # Cartesius
         CARTESIUS_SCRATCH_USERNAME = 'ckehl'
         odir = "/scratch/shared/{}/experiments/parcels".format(CARTESIUS_SCRATCH_USERNAME)
@@ -330,30 +355,57 @@ if __name__=='__main__':
                 simStart = f.grid.time_full[0]
             break
 
+    if repeatdtFlag:
+        addParticleN = Nparticle/2.0
+        refresh_cycle = (delta(days=time_in_days).total_seconds() / (addParticleN/start_N_particles)) / math.sqrt(3/2)
+        repeatRateMinutes = int(refresh_cycle/60.0) if repeatRateMinutes == 720 else repeatRateMinutes
+
     if backwardSimulation:
         # ==== backward simulation ==== #
         if agingParticles:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes), life_expectancy=[delta(days=time_in_days).total_seconds(), ] * start_N_particles)
+                psetA = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * int(Nparticle/2.0))
+                pset.add(psetA)
             else:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * Nparticle)
         else:
             if repeatdtFlag:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                psetA = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart)
+                pset.add(psetA)
             else:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
     else:
         # ==== forward simulation ==== #
         if agingParticles:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes), life_expectancy=[delta(days=time_in_days).total_seconds(), ] * start_N_particles)
+                psetA = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * int(Nparticle/2.0))
+                pset.add(psetA)
             else:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * Nparticle)
         else:
             if repeatdtFlag:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                psetA = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart)
+                pset.add(psetA)
             else:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
+
+    # if agingParticles:
+    #     for p in pset.particles:
+    #         p.life_expectancy = delta(days=time_in_days).total_seconds()
+    # else:
+    #     for p in pset.particles:
+    #         p.initialized_dynamic = 1
+
+    # available_n_particles = len(pset)
+    # life = np.random.uniform(delta(hours=24).total_seconds(), delta(days=time_in_days).total_seconds(), available_n_particles)
+    # i=0
+    # for p in pset.particles:
+    #     p.life_expectancy = life[i]
+    #     i += 1
 
     output_file = None
     if args.write_out:
@@ -375,7 +427,8 @@ if __name__=='__main__':
         starttime = ostime.time()
     kernels = pset.Kernel(AdvectionRK4,delete_cfiles=True)
     if agingParticles:
-        kernels +=  pset.Kernel(Age,delete_cfiles=True)
+        kernels += pset.Kernel(initialize, delete_cfiles=True)
+        kernels += pset.Kernel(Age,delete_cfiles=True)
     if with_GC:
         postProcessFuncs.append(perIterGC)
     if backwardSimulation:
@@ -437,8 +490,8 @@ if __name__=='__main__':
         mpi_comm = MPI.COMM_WORLD
         mpi_comm.Barrier()
         if mpi_comm.Get_rank() == 0:
-            plot(perflog.samples, perflog.times_steps, perflog.memory_steps, perflog.fds_steps, os.path.join(odir, imageFileName))
+            plot(perflog.samples, perflog.times_steps, perflog.memory_steps, perflog.Nparticles_step, os.path.join(odir, imageFileName))
     else:
-        plot(perflog.samples, perflog.times_steps, perflog.memory_steps, perflog.fds_steps, os.path.join(odir, imageFileName))
+        plot(perflog.samples, perflog.times_steps, perflog.memory_steps, perflog.Nparticles_step, os.path.join(odir, imageFileName))
 
 
