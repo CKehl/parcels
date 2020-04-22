@@ -311,6 +311,7 @@ if __name__=='__main__':
 
     dt_minutes = 60
     #dt_minutes = 20
+    random.seed(123456)
 
     odir = ""
     if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
