@@ -334,7 +334,7 @@ if __name__ == "__main__":
     ifiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05I.nc'))
     bfile = dirread_top + 'domain/bathymetry_ORCA12_V3.3.nc'
 
-    fieldset = set_nemo_fieldset(ufiles, vfiles, wfiles, tfiles, pfiles, dfiles, ifiles, bfile, dirread_pal + 'domain/coordinates.nc')
+    fieldset = set_nemo_fieldset(ufiles, vfiles, wfiles, tfiles, pfiles, dfiles, ifiles, bfile, os.path.join(dirread_pal, "domain/coordinates.nc"))
     fieldset.add_periodic_halo(zonal=True) 
     fieldset.add_constant('dwellingdepth', np.float(dd))
     fieldset.add_constant('sinkspeed', sp/86400.)
