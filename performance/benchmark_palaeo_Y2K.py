@@ -268,7 +268,8 @@ if __name__ == "__main__":
     dirread_top = ""
     dirread_top_bgc = ""
     if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
-        headdir = "/scratch/{}/experiments/palaeo-parcels".format(os.environ['USER'])
+        # headdir = "/scratch/{}/experiments/palaeo-parcels".format(os.environ['USER'])
+        headdir = "/scratch/{}/experiments/palaeo-parcels".format("ckehl")
         odir = os.path.join(headdir,"BENCHres")
         dirread_pal = os.path.join(headdir,'NEMOdata')
         datahead = "/data/oceanparcels/input_data"
@@ -294,7 +295,7 @@ if __name__ == "__main__":
     # dirread_pal = '/projects/0/palaeo-parcels/NEMOdata/'
 
     outfile = 'grid_dd' + str(int(dd)) + '_sp' + str(int(sp))
-    dirwrite = odir+'/sp%d_dd%d/'%(int(sp),int(dd))
+    dirwrite = os.path.join(odir, "sp%d_dd%d" % (int(sp),int(dd)))
     if not os.path.exists(dirwrite):
         os.mkdir(dirwrite)
 
@@ -359,7 +360,7 @@ if __name__ == "__main__":
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
 
-    pfile = ParticleFile(dirwrite + outfile, pset, write_ondelete=True)
+    pfile = ParticleFile(os.path.join(dirwrite, outfile), pset, write_ondelete=True)
     kernels = pset.Kernel(initials) + Sink + Age  + pset.Kernel(AdvectionRK4_3D) + Age
 
     if MPI:
