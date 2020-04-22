@@ -258,7 +258,7 @@ age_ptype = {'scipy': AgeParticle_SciPy, 'jit': AgeParticle_JIT}
 
 def initialize(particle, fieldset, time):
     if particle.initialized_dynamic < 1:
-        particle.life_expectancy = random.uniform(.0, particle.life_expectancy)
+        particle.life_expectancy = random.uniform(.0, fieldset.life_expectancy)
         particle.initialized_dynamic = 1
 
 def Age(particle, fieldset, time):
@@ -360,16 +360,17 @@ if __name__=='__main__':
         addParticleN = Nparticle/2.0
         refresh_cycle = (delta(days=time_in_days).total_seconds() / (addParticleN/start_N_particles)) / math.sqrt(3/2)
         repeatRateMinutes = int(refresh_cycle/60.0) if repeatRateMinutes == 720 else repeatRateMinutes
+        fieldset.add_constant('life_expectancy', delta(days=time_in_days).total_seconds())
 
     if backwardSimulation:
         # ==== backward simulation ==== #
         if agingParticles:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes), life_expectancy=[delta(days=time_in_days).total_seconds(), ] * start_N_particles)
-                psetA = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * int(Nparticle/2.0))
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                psetA = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart)
                 pset.add(psetA)
             else:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * Nparticle)
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
         else:
             if repeatdtFlag:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
@@ -381,11 +382,11 @@ if __name__=='__main__':
         # ==== forward simulation ==== #
         if agingParticles:
             if repeatdtFlag:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes), life_expectancy=[delta(days=time_in_days).total_seconds(), ] * start_N_particles)
-                psetA = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * int(Nparticle/2.0))
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
+                psetA = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(int(Nparticle/2.0), 1) * a, lat=np.random.rand(int(Nparticle/2.0), 1) * b, time=simStart)
                 pset.add(psetA)
             else:
-                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart, life_expectancy=[delta(days=time_in_days).total_seconds(), ] * Nparticle)
+                pset = ParticleSet(fieldset=fieldset, pclass=age_ptype[(args.compute_mode).lower()], lon=np.random.rand(Nparticle, 1) * a, lat=np.random.rand(Nparticle, 1) * b, time=simStart)
         else:
             if repeatdtFlag:
                 pset = ParticleSet(fieldset=fieldset, pclass=ptype[(args.compute_mode).lower()], lon=np.random.rand(start_N_particles, 1) * a, lat=np.random.rand(start_N_particles, 1) * b, time=simStart, repeatdt=delta(minutes=repeatRateMinutes))
