@@ -360,7 +360,7 @@ if __name__ == "__main__":
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
 
-    pfile = pset.ParticleFile(os.path.join(dirwrite, outfile), pset, write_ondelete=True)
+    pfile = pset.ParticleFile(os.path.join(dirwrite, outfile), convert_at_end=True, write_ondelete=True)
     kernels = pset.Kernel(initials) + Sink + Age  + pset.Kernel(AdvectionRK4_3D) + Age
 
     if MPI:
