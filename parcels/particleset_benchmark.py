@@ -73,7 +73,7 @@ class ParticleSet_Benchmark(ParticleSet):
 
     def __init__(self, fieldset, pclass=JITParticle, lon=None, lat=None, depth=None, time=None, repeatdt=None,
                  lonlatdepth_dtype=None, pid_orig=None, **kwargs):
-        super(ParticleSet_Benchmark, self).__init__(fieldset, pclass, lon, lat, depth, time, repeatdt, lonlatdepth_dtype, pid_orig, kwargs=kwargs)
+        super(ParticleSet_Benchmark, self).__init__(fieldset, pclass, lon, lat, depth, time, repeatdt, lonlatdepth_dtype, pid_orig, **kwargs)
         self.compute_log = ParticleSet_TimingLog()
         self.io_log = ParticleSet_TimingLog()
         self.plot_log = ParticleSet_TimingLog
