@@ -1,5 +1,5 @@
 from parcels import (FieldSet, ParticleSet, ScipyParticle, JITParticle,
-                     Variable, ErrorCode)
+                     Variable, ErrorCode, AdvectionRK4)
 from parcels.particlefile import _set_calendar
 from parcels.tools.converters import _get_cftime_calendars, _get_cftime_datetimes
 import numpy as np
@@ -8,7 +8,77 @@ import os
 from netCDF4 import Dataset
 import cftime
 
+# import sys
+
 ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
+
+@pytest.mark.parametrize('mode', ['scipy', 'jit'])
+@pytest.mark.parametrize('with_interrupt', [True, False])
+def test_pfile_double_export(mode, tmpdir, with_interrupt):
+    class StopInterrupt(Exception):
+        def _render_traceback_(self):
+            pass
+
+    class SimulationInterrupt():
+        pset = None
+        outfile = None
+        initial_n_particles = 0
+        delete_threshold = 1.0
+
+        def check_states(self):
+            if self.pset is None:
+                return
+            else:
+                if (len(self.pset) / self.initial_n_particles) < self.delete_threshold:
+                    # sys.stdout.write("fraction of particles below threshold: {}\n".format(len(self.pset) / self.initial_n_particles))
+                    if self.outfile is not None:
+                        self.outfile.export()
+                        self.outfile = None
+                        raise StopInterrupt
+
+    class AgeParticleJ(JITParticle):
+        lifetime = Variable('lifetime', dtype=np.float32, initial=.0)
+
+    class AgeParticleS(ScipyParticle):
+        lifetime = Variable('lifetime', dtype=np.float32, initial=.0)
+
+    atype = {'scipy': AgeParticleS, 'jit': AgeParticleJ}
+
+    def aging(particle, fieldset, time):
+        if particle.lifetime < time:
+            particle.delete()
+
+    filepath = tmpdir.join("pfile_double_export.nc")
+    fnameU = os.path.join(os.path.dirname(__file__), 'test_data', 'perlinfieldsU.nc')
+    fnameV = os.path.join(os.path.dirname(__file__), 'test_data', 'perlinfieldsV.nc')
+    ufiles = [fnameU, ] * 4
+    vfiles = [fnameV, ] * 4
+    timestamps = np.arange(0, 4, 1) * 86400.0
+    timestamps = np.expand_dims(timestamps, 1)
+    files = {'U': ufiles, 'V': vfiles}
+    variables = {'U': 'vozocrtx', 'V': 'vomecrty'}
+    dimensions = {'lon': 'nav_lon', 'lat': 'nav_lat'}
+
+    fieldset = FieldSet.from_netcdf(files, variables, dimensions, timestamps=timestamps, time_periodic=4*86400.0, deferred_load=True, allow_time_extrapolation=False, field_chunksize='auto')
+    pset = ParticleSet.from_line(fieldset, size=10, pclass=atype[mode], start=(0.5, 0.5), finish=(0.5, 0.5))
+    for i in range(0, len(pset)):
+        pset.particles[i].lifetime = float(i)/10.0
+    pfile = pset.ParticleFile(filepath)
+
+    if with_interrupt:
+        interrupter = SimulationInterrupt()
+        interrupter.pset = pset
+        interrupter.outfile = pfile
+        interrupter.initial_n_particles = len(pset)
+        interrupter.delete_threshold = 0.5
+        funcs=[interrupter.check_states, ]
+        try:
+            pset.execute(pset.Kernel(AdvectionRK4)+pset.Kernel(aging), dt=0.05, runtime=2, output_file=pfile, postIterationCallbacks=funcs, callbackdt=0.1)
+        except (StopInterrupt, ):
+            pass
+    else:
+        pset.execute(AdvectionRK4, dt=0.05, runtime=2, output_file=pfile)
+    pfile.export()
 
 
 def fieldset(xdim=40, ydim=100):
