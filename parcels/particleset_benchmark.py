@@ -68,14 +68,15 @@ class ParticleSet_TimingLog():
             self._iter+=1
             self.mtime = 0
 
+
 class ParticleSet_Benchmark(ParticleSet):
 
     def __init__(self, fieldset, pclass=JITParticle, lon=None, lat=None, depth=None, time=None, repeatdt=None,
                  lonlatdepth_dtype=None, pid_orig=None, **kwargs):
+        super(ParticleSet_Benchmark, self).__init__(fieldset, pclass, lon, lat, depth, time, repeatdt, lonlatdepth_dtype, pid_orig, kwargs=kwargs)
         self.compute_log = ParticleSet_TimingLog()
         self.io_log = ParticleSet_TimingLog()
         self.plot_log = ParticleSet_TimingLog
-        super(ParticleSet, self).__init__(fieldset, pclass=pclass, lon=lon, lat=lat, depth=depth, time=time, repeatdt=repeatdt, lonlatdepth_dtype=lonlatdepth_dtype, kwargs=kwargs)
 
     #@profile
     def execute(self, pyfunc=AdvectionRK4, endtime=None, runtime=None, dt=1.,
