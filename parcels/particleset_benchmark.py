@@ -76,7 +76,7 @@ class ParticleSet_Benchmark(ParticleSet):
         super(ParticleSet_Benchmark, self).__init__(fieldset, pclass, lon, lat, depth, time, repeatdt, lonlatdepth_dtype, pid_orig, **kwargs)
         self.compute_log = ParticleSet_TimingLog()
         self.io_log = ParticleSet_TimingLog()
-        self.plot_log = ParticleSet_TimingLog
+        self.plot_log = ParticleSet_TimingLog()
 
     #@profile
     def execute(self, pyfunc=AdvectionRK4, endtime=None, runtime=None, dt=1.,
