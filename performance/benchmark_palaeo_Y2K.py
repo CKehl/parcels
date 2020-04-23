@@ -309,10 +309,14 @@ if __name__ == "__main__":
     dep = dd * np.ones(latsz.shape)
 
     times = np.array([datetime(2000, 12, 25) - delta(days=x) for x in range(0,int(365),3)])
-    time = np.empty(shape=(0)); lons = np.empty(shape=(0)); lats = np.empty(shape=(0))
+    time = np.empty(shape=(0))
+    depths = np.empty(shape=(0))
+    lons = np.empty(shape=(0))
+    lats = np.empty(shape=(0))
     for i in range(len(times)):
         lons = np.append(lons,lonsz)
         lats = np.append(lats, latsz)
+        depths = np.append(depths, np.zeros(len(lonsz), dtype=np.float32))
         time = np.append(time, np.full(len(lonsz),times[i]))
 
 
@@ -353,9 +357,8 @@ if __name__ == "__main__":
         ICE = Variable('ICE',dtype=np.float32, initial=np.nan)
         ICEPRES = Variable('ICEPRES',dtype=np.float32, initial=np.nan)
         CO2 = Variable('CO2',dtype=np.float32, initial=np.nan)
-        
-    pset = ParticleSet_Benchmark.from_list(fieldset=fieldset, pclass=DinoParticle, lon=lons.tolist(), lat=lats.tolist(),
-                       time = time)
+
+    pset = ParticleSet_Benchmark.from_list(fieldset=fieldset, pclass=DinoParticle, lon=lons.tolist(), lat=lats.tolist(), depth=depths.tolist(), time = time)
 
     perflog = PerformanceLog()
     postProcessFuncs = [perflog.advance,]
