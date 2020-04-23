@@ -354,7 +354,7 @@ if __name__ == "__main__":
         ICEPRES = Variable('ICEPRES',dtype=np.float32, initial=np.nan)
         CO2 = Variable('CO2',dtype=np.float32, initial=np.nan)
         
-    pset = ParticleSet_Benchmark.from_list(fieldset=fieldset, pclass=DinoParticle, lon=lonsz.tolist(), lat=latsz.tolist(),
+    pset = ParticleSet_Benchmark.from_list(fieldset=fieldset, pclass=DinoParticle, lon=lons.tolist(), lat=lats.tolist(),
                        time = time)
 
     perflog = PerformanceLog()
