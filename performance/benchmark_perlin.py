@@ -285,7 +285,7 @@ if __name__=='__main__':
     parser.add_argument("-d", "--delParticle", dest="delete_particle", action='store_true', default=False, help="switch to delete a particle (True) or reset a particle (default: False).")
     parser.add_argument("-A", "--animate", dest="animate", action='store_true', default=False, help="animate the particle trajectories during the run or not (default: False).")
     parser.add_argument("-V", "--visualize", dest="visualize", action='store_true', default=False, help="Visualize particle trajectories at the end (default: False). Requires -w in addition to take effect.")
-    parser.add_argument("-N", "--n_particles", dest="nparticles", type=str, default="2e6", help="number of particles to generate and advect (default: 2e6)")
+    parser.add_argument("-N", "--n_particles", dest="nparticles", type=str, default="2**6", help="number of particles to generate and advect (default: 2e6)")
     parser.add_argument("-sN", "--start_n_particles", dest="start_nparticles", type=str, default="96", help="(optional) number of particles generated per release cycle (if --rt is set) (default: 96)")
     parser.add_argument("-m", "--mode", dest="compute_mode", choices=['jit','scipy'], default="jit", help="computation mode = [JIT, SciPp]")
     parser.add_argument("-G", "--GC", dest="useGC", action='store_true', default=False, help="using a garbage collector (default: false)")
@@ -305,9 +305,15 @@ if __name__=='__main__':
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         if mpi_comm.Get_rank() == 0:
-            sys.stdout.write("N: {}\n".format(Nparticle))
+            if agingParticles:
+                sys.stdout.write("N: {} ( {} )\n".format(Nparticle, int(Nparticle * math.sqrt(3.0/2.0))))
+            else:
+                sys.stdout.write("N: {}\n".format(Nparticle))
     else:
-        sys.stdout.write("N: {}\n".format(Nparticle))
+        if agingParticles:
+            sys.stdout.write("N: {} ( {} )\n".format(Nparticle, int(Nparticle * math.sqrt(3.0/2.0))))
+        else:
+            sys.stdout.write("N: {}\n".format(Nparticle))
 
     dt_minutes = 60
     #dt_minutes = 20
@@ -334,7 +340,7 @@ if __name__=='__main__':
         fieldset = perlin_fieldset_from_numpy(periodic_wrap=periodicFlag)
 
     if args.compute_mode is 'scipy':
-        Nparticle = 2**6
+        Nparticle = 2**10
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
@@ -356,11 +362,13 @@ if __name__=='__main__':
                 simStart = f.grid.time_full[0]
             break
 
+    if agingParticles:
+        Nparticle = int(Nparticle * math.sqrt(3.0/2.0))
+        fieldset.add_constant('life_expectancy', delta(days=time_in_days).total_seconds())
     if repeatdtFlag:
         addParticleN = Nparticle/2.0
         refresh_cycle = (delta(days=time_in_days).total_seconds() / (addParticleN/start_N_particles)) / math.sqrt(3/2)
         repeatRateMinutes = int(refresh_cycle/60.0) if repeatRateMinutes == 720 else repeatRateMinutes
-        fieldset.add_constant('life_expectancy', delta(days=time_in_days).total_seconds())
 
     if backwardSimulation:
         # ==== backward simulation ==== #
