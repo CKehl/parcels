@@ -42,7 +42,9 @@ class PerformanceLog():
     samples = []
     times_steps = []
     memory_steps = []
+    Nparticles_step = []
     _iter = 0
+    pset = None
 
     def advance(self):
         if MPI:
@@ -51,15 +53,23 @@ class PerformanceLog():
             process = psutil.Process(os.getpid())
             mem_B_used = process.memory_info().rss
             mem_B_used_total = mpi_comm.reduce(mem_B_used, op=MPI.SUM, root=0)
+            Nparticles_global = 0
+            if self.pset is not None:
+                Nparticles_local = len(self.pset)
+                Nparticles_global = mpi_comm.reduce(Nparticles_local, op=MPI.SUM, root=0)
             if mpi_rank == 0:
                 self.times_steps.append(MPI.Wtime())
                 self.memory_steps.append(mem_B_used_total)
+                if self.pset is not None:
+                    self.Nparticles_step.append(Nparticles_global)
                 self.samples.append(self._iter)
                 self._iter+=1
         else:
             process = psutil.Process(os.getpid())
             self.times_steps.append(ostime.time())
             self.memory_steps.append(process.memory_info().rss)
+            if self.pset is not None:
+                self.Nparticles_step.append(len(self.pset))
             self.samples.append(self._iter)
             self._iter+=1
 
@@ -209,9 +219,9 @@ def set_nemo_fieldset(ufiles, vfiles, wfiles, tfiles, pfiles, dfiles, ifiles, bf
 
 def periodicBC(particle, fieldSet, time):
     if particle.lon > 180:
-        particle.lon -= 360        
+        particle.lon -= 360
     if particle.lon < -180:
-        particle.lon += 360   
+        particle.lon += 360
 
 def Sink(particle, fieldset, time):
     if(particle.depth>fieldset.dwellingdepth):
@@ -366,6 +376,8 @@ if __name__ == "__main__":
     pfile = pset.ParticleFile(os.path.join(dirwrite, outfile), convert_at_end=True, write_ondelete=True)
     kernels = pset.Kernel(initials) + Sink + Age  + pset.Kernel(AdvectionRK4_3D) + Age
 
+    starttime = 0
+    endtime = 0
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
@@ -397,6 +409,7 @@ if __name__ == "__main__":
                     dt_time.append( (perflog.times_steps[i]-global_t_0) )
                 else:
                     dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
+            sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
             sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
             avg_time = np.mean(np.array(dt_time, dtype=np.float64))
             sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
@@ -407,6 +420,7 @@ if __name__ == "__main__":
                 dt_time.append((perflog.times_steps[i] - global_t_0))
             else:
                 dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
+        sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
         sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
         avg_time = np.mean(np.array(dt_time, dtype=np.float64))
         sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))
