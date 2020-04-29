@@ -305,12 +305,12 @@ if __name__=='__main__':
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         if mpi_comm.Get_rank() == 0:
-            if agingParticles:
+            if agingParticles and not repeatdtFlag:
                 sys.stdout.write("N: {} ( {} )\n".format(Nparticle, int(Nparticle * math.sqrt(3.0/2.0))))
             else:
                 sys.stdout.write("N: {}\n".format(Nparticle))
     else:
-        if agingParticles:
+        if agingParticles and not repeatdtFlag:
             sys.stdout.write("N: {} ( {} )\n".format(Nparticle, int(Nparticle * math.sqrt(3.0/2.0))))
         else:
             sys.stdout.write("N: {}\n".format(Nparticle))
@@ -363,7 +363,8 @@ if __name__=='__main__':
             break
 
     if agingParticles:
-        Nparticle = int(Nparticle * math.sqrt(3.0/2.0))
+        if not repeatdtFlag:
+            Nparticle = int(Nparticle * math.sqrt(3.0/2.0))
         fieldset.add_constant('life_expectancy', delta(days=time_in_days).total_seconds())
     if repeatdtFlag:
         addParticleN = Nparticle/2.0
@@ -471,6 +472,7 @@ if __name__=='__main__':
                     dt_time.append( (perflog.times_steps[i]-global_t_0) )
                 else:
                     dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
+            sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
             sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
             avg_time = np.mean(np.array(dt_time, dtype=np.float64))
             sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
@@ -481,6 +483,7 @@ if __name__=='__main__':
                 dt_time.append((perflog.times_steps[i] - global_t_0))
             else:
                 dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
+        sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
         sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
         avg_time = np.mean(np.array(dt_time, dtype=np.float64))
         sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))
