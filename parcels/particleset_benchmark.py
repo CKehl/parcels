@@ -68,6 +68,24 @@ class ParticleSet_TimingLog():
             self._iter+=1
             self.mtime = 0
 
+class ParticleSet_ParamLogging():
+    samples = []
+    params = []
+    _iter = 0
+
+    def advance_iteration(self, param):
+        if MPI:
+            mpi_comm = MPI.COMM_WORLD
+            mpi_rank = mpi_comm.Get_rank()
+            if mpi_rank == 0:
+                self.params.append(param)
+                self.samples.append(self._iter)
+                self._iter+=1
+        else:
+            self.params.append(param)
+            self.samples.append(self._iter)
+            self._iter+=1
+
 
 class ParticleSet_Benchmark(ParticleSet):
 
@@ -77,6 +95,7 @@ class ParticleSet_Benchmark(ParticleSet):
         self.compute_log = ParticleSet_TimingLog()
         self.io_log = ParticleSet_TimingLog()
         self.plot_log = ParticleSet_TimingLog()
+        self.nparticle_log = ParticleSet_ParamLogging()
 
     #@profile
     def execute(self, pyfunc=AdvectionRK4, endtime=None, runtime=None, dt=1.,
@@ -239,6 +258,7 @@ class ParticleSet_Benchmark(ParticleSet):
                 next_prelease += self.repeatdt * np.sign(dt)
             self.compute_log.stop_timing()
             self.compute_log.accumulate_timing()
+            self.nparticle_log.advance_iteration(len(self))
             # ==== end compute ==== #
             if abs(time-next_output) < tol:  # ==== IO ==== #
                 if output_file:

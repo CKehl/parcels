@@ -4,6 +4,8 @@ Created on Fri Oct 13 15:31:22 2017
 
 @author: nooteboom
 """
+import itertools
+
 from parcels import (FieldSet, JITParticle, AdvectionRK4_3D,
                      Field, ErrorCode, ParticleFile, Variable)
 # from parcels import ParticleSet
@@ -73,14 +75,16 @@ class PerformanceLog():
             self.samples.append(self._iter)
             self._iter+=1
 
-def plot(x, total_times, compute_times, io_times, memory_used, imageFilePath):
+def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFilePath):
     plot_t = []
     plot_ct = []
     plot_iot = []
+    plot_npart = []
     cum_t = 0
     cum_ct = 0
     cum_iot = 0
     t_scaler = 1. * 10./1.0
+    npart_scaler = 1.0 / 1000.0
     for i in range(len(total_times)):
         if i==0:
             plot_t.append( (total_times[i]-global_t_0)*t_scaler )
@@ -95,19 +99,31 @@ def plot(x, total_times, compute_times, io_times, memory_used, imageFilePath):
     for i in range(len(io_times)):
         plot_iot.append(io_times[i] * t_scaler)
         cum_iot += io_times[i]
+    for i in range(len(nparticles)):
+        plot_npart.append(nparticles[i] * npart_scaler)
 
-    #mem_scaler = (1*10)/(1024*1024*1024)
-    mem_scaler = 1 / (1024 * 1024 * 1024)
-    plot_mem = []
-    for i in range(len(memory_used)):
-        plot_mem.append(memory_used[i] * mem_scaler)
+    if (memory_used is not None) and (len(memory_used)==len(plot_t)):
+        #mem_scaler = (1*10)/(1024*1024*1024)
+        mem_scaler = 1 / (1024 * 1024 * 1024)
+        plot_mem = []
+        for i in range(len(memory_used)):
+            plot_mem.append(memory_used[i] * mem_scaler)
+
+    assert (len(plot_t) == len(plot_ct))
+    assert (len(plot_t) == len(plot_iot))
+    # assert (len(plot_t) == len(plot_mem))
+    assert (len(plot_t) == len(plot_npart))
+    x = []
+    for i in itertools.islice(itertools.count(), 0, len(plot_t)):
+        x.append(i)
 
     fig, ax = plt.subplots(1, 1, figsize=(21, 12))
     ax.plot(x, plot_t, 'o-', label="total time_spent [100ms]")
-    ax.plot(x, plot_t, 'o-', label="compute time_spent [100ms]")
-    ax.plot(x, plot_t, 'o-', label="io time_spent [100ms]")
-    #ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [100 MB]")
-    ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [1 GB]")
+    ax.plot(x, plot_ct, 'o-', label="compute time_spent [100ms]")
+    ax.plot(x, plot_iot, 'o-', label="io time_spent [100ms]")
+    if (memory_used is not None) and (len(memory_used) == len(plot_t)):
+        #ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [100 MB]")
+        ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [1 GB]")
     plt.xlim([0, 730])
     plt.ylim([0, 120])
     plt.legend()
@@ -390,7 +406,7 @@ if __name__ == "__main__":
     # pset.execute(kernels, runtime=delta(days=365*9), dt=delta(minutes=-20), output_file=pfile, verbose_progress=False,
     # recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs)
     pset.execute(kernels, runtime=delta(days=365), dt=delta(hours=-12), output_file=pfile, verbose_progress=False,
-                 recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs)
+                 recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=12))
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
@@ -432,9 +448,11 @@ if __name__ == "__main__":
         mpi_comm = MPI.COMM_WORLD
         mpi_comm.Barrier()
         if mpi_comm.Get_rank() == 0:
-            plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
+            # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
+            plot(perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
     else:
-        plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
+        # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
+        plot(perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
 
     print('Execution finished')
 
