@@ -10,7 +10,7 @@ from parcels import plotTrajectoriesFile_loadedField
 from datetime import timedelta as delta
 import math
 from argparse import ArgumentParser
-#import datetime
+import datetime
 import numpy as np
 import xarray as xr
 # import pytest
@@ -246,15 +246,16 @@ class AgeParticle_SciPy(ScipyParticle):
 
 def initialize(particle, fieldset, time):
     if particle.initialized_dynamic < 1:
-        particle.life_expectancy = random.uniform(.0, fieldset.life_expectancy)
+        particle.life_expectancy = time+random.uniform(.0, fieldset.life_expectancy)*math.sqrt(3.0/2.0)
         particle.initialized_dynamic = 1
 
 def Age(particle, fieldset, time):
     if particle.state == ErrorCode.Evaluate:
         particle.age = particle.age + math.fabs(particle.dt)
 
-        if particle.age > particle.life_expectancy:
-            particle.delete()
+    if particle.age > particle.life_expectancy:
+        particle.delete()
+
 
 age_ptype = {'scipy': AgeParticle_SciPy, 'jit': AgeParticle_JIT}
 
@@ -304,7 +305,9 @@ if __name__=='__main__':
 
     dt_minutes = 60
     #dt_minutes = 20
-    random.seed(123456)
+    #random.seed(123456)
+    nowtime = datetime.datetime.now()
+    random.seed(nowtime.microsecond)
 
     odir = ""
     if os.uname()[1] in ['science-bs35', 'science-bs36']:  # Gemini
@@ -406,8 +409,22 @@ if __name__=='__main__':
     #     i += 1
 
     output_file = None
+    out_fname = "benchmark_stommel"
     if args.write_out:
-        output_file = pset.ParticleFile(name=os.path.join(odir,"test_mem_behaviour.nc"), outputdt=delta(hours=12))
+        if MPI and (MPI.COMM_WORLD.Get_size()>1):
+            out_fname += "_MPI"
+        else:
+            out_fname += "_noMPI"
+        out_fname += "_n"+str(Nparticle)
+        if backwardSimulation:
+            out_fname += "_bwd"
+        else:
+            out_fname += "_fwd"
+        if repeatdtFlag:
+            out_fname += "_add"
+        if agingParticles:
+            out_fname += "_age"
+        output_file = pset.ParticleFile(name=os.path.join(odir,out_fname+".nc"), outputdt=delta(hours=24))
     delete_func = RenewParticle
     if args.delete_particle:
         delete_func=DeleteParticle
@@ -426,7 +443,7 @@ if __name__=='__main__':
     kernels = pset.Kernel(AdvectionRK4,delete_cfiles=True)
     if agingParticles:
         kernels += pset.Kernel(initialize, delete_cfiles=True)
-        kernels += pset.Kernel(Age,delete_cfiles=True)
+        kernels += pset.Kernel(Age, delete_cfiles=True)
     if with_GC:
         postProcessFuncs.append(perIterGC)
     if backwardSimulation:
@@ -459,7 +476,7 @@ if __name__=='__main__':
                     dt_time.append( (perflog.times_steps[i]-global_t_0) )
                 else:
                     dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
-            sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+            sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
             sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
             avg_time = np.mean(np.array(dt_time, dtype=np.float64))
             sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
@@ -470,7 +487,7 @@ if __name__=='__main__':
                 dt_time.append((perflog.times_steps[i] - global_t_0))
             else:
                 dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
-        sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+        sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
         sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
         avg_time = np.mean(np.array(dt_time, dtype=np.float64))
         sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))
@@ -481,10 +498,10 @@ if __name__=='__main__':
             if MPI:
                 mpi_comm = MPI.COMM_WORLD
                 if mpi_comm.Get_rank() == 0:
-                    plotTrajectoriesFile_loadedField(os.path.join(odir, "test_mem_behaviour.nc"),
+                    plotTrajectoriesFile_loadedField(os.path.join(odir, out_fname+".nc"),
                                                      tracerfield=fieldset.U)
             else:
-                plotTrajectoriesFile_loadedField(os.path.join(odir,"test_mem_behaviour.nc"),tracerfield=fieldset.U)
+                plotTrajectoriesFile_loadedField(os.path.join(odir, out_fname+".nc"),tracerfield=fieldset.U)
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
