@@ -479,7 +479,7 @@ if __name__ == "__main__":
     else:
         starttime = ostime.time()
 
-    pset.execute(kernels, runtime=delta(days=simdays), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+    pset.execute(kernels, runtime=delta(days=args.time_in_days), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
