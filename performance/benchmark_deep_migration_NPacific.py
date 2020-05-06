@@ -343,7 +343,7 @@ if __name__ == "__main__":
         datahead = "/data/oceanparcels/input_data"
         dirread = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/means/')
         dirread_bgc = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/means/')
-        dirread_mesh = os.path.join(datahead, 'NEMO-MEDUSA_BGC/ORCA0083-N006/domain/')
+        dirread_mesh = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/domain/')
     elif fnmatch.fnmatchcase(os.uname()[1], "int?.*"):  # Cartesius
         CARTESIUS_SCRATCH_USERNAME = 'ckehl'
         headdir = "/scratch/shared/{}/experiments/deep_migration_behaviour".format(CARTESIUS_SCRATCH_USERNAME)
@@ -358,7 +358,7 @@ if __name__ == "__main__":
         datahead = "/data"
         dirread = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/means/')
         dirread_bgc = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/means/')
-        dirread_mesh = os.path.join(datahead, 'NEMO-MEDUSA_BGC/ORCA0083-N006/domain/')
+        dirread_mesh = os.path.join(datahead, 'NEMO-MEDUSA/ORCA0083-N006/domain/')
 
     # ==== CARTESIUS ==== #
     # dirread = '/projects/0/topios/hydrodynamic_data/NEMO-MEDUSA/ORCA0083-N006/means/'
