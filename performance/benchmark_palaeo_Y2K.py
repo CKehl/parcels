@@ -285,6 +285,7 @@ if __name__ == "__main__":
 
     sp = args.sp # The sinkspeed m/day
     dd = args.dd  # The dwelling depth
+    time_in_days = int(float(eval(args.time_in_days)))
 
     headdir = ""
     odir = ""
@@ -405,7 +406,7 @@ if __name__ == "__main__":
 
     # pset.execute(kernels, runtime=delta(days=365*9), dt=delta(minutes=-20), output_file=pfile, verbose_progress=False,
     # recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs)
-    pset.execute(kernels, runtime=delta(days=365), dt=delta(hours=-12), output_file=pfile, verbose_progress=False,
+    pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(hours=-12), output_file=pfile, verbose_progress=False,
                  recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=12))
     if MPI:
         mpi_comm = MPI.COMM_WORLD
