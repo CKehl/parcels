@@ -19,14 +19,15 @@ import math
 from glob import glob
 import sys
 import pandas as pd
-# import dask
 
 import psutil
-# import gc
 import os
 import time as ostime
 import matplotlib.pyplot as plt
 import fnmatch
+
+# import dask
+# import gc
 
 try:
     from mpi4py import MPI
@@ -272,8 +273,6 @@ def initials(particle, fieldset, time):
 
 
 if __name__ == "__main__":
-    #run_corefootprintparticles(dirwrite, outfile, lons, lats, dep)
-
     parser = ArgumentParser(description="Example of particle advection using in-memory stommel test case")
     parser.add_argument("-i", "--imageFileName", dest="imageFileName", type=str, default="mpiChunking_plot_MPI.png", help="image file name of the plot")
     parser.add_argument("-p", "--periodic", dest="periodic", action='store_true', default=False, help="enable/disable periodic wrapping (else: extrapolation)")
