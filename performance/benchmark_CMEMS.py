@@ -111,10 +111,12 @@ def create_CMEMS_fieldset(datahead, periodic_wrap):
     files = sorted(glob(ddir+"mercatorglorys12v1_gl12_mean_201607*.nc"))
     variables = {'U': 'uo', 'V': 'vo'}
     dimensions = {'lon': 'longitude', 'lat': 'latitude', 'time': 'time'}
+    # chs = False
+    chs = 'auto'
     if periodic_wrap:
-        return FieldSet.from_netcdf(files, variables, dimensions, field_chunksize=False, time_periodic=delta(days=1))
+        return FieldSet.from_netcdf(files, variables, dimensions, field_chunksize=chs, time_periodic=delta(days=1))
     else:
-        return FieldSet.from_netcdf(files, variables, dimensions, field_chunksize=False, allow_time_extrapolation=True)
+        return FieldSet.from_netcdf(files, variables, dimensions, field_chunksize=chs, allow_time_extrapolation=True)
 
 
 class AgeParticle_JIT(JITParticle):
@@ -231,7 +233,7 @@ if __name__=='__main__':
             sys.stdout.write("N: {}\n".format(Nparticle))
 
     dt_minutes = 60
-    nowtime = datetime.datetime.now()
+    nowtime = datetime.now()
     random.seed(nowtime.microsecond)
 
     func_time = []
