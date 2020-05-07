@@ -116,7 +116,7 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
     for i in range(len(nparticles)):
         plot_npart.append(nparticles[i] * npart_scaler)
 
-    if (memory_used is not None) and (len(memory_used)==len(plot_t)):
+    if memory_used is not None:
         #mem_scaler = (1*10)/(1024*1024*1024)
         mem_scaler = 1 / (1024 * 1024 * 1024)
         plot_mem = []
