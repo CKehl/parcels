@@ -542,10 +542,10 @@ if __name__ == "__main__":
         mpi_comm.Barrier()
         if mpi_comm.Get_rank() == 0:
             # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
-            plot(perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
+            plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, perflog.memory_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
     else:
         # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
-        plot(perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
+        plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, perflog.memory_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
 
     pfile.close()
 

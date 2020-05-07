@@ -39,7 +39,7 @@ class ParticleSet_TimingLog():
             if mpi_rank == 0:
                 self.stime = MPI.Wtime()
         else:
-            self.stime = time_module.time()
+            self.stime = time_module.perf_counter()
 
     def stop_timing(self):
         if MPI:
@@ -48,7 +48,7 @@ class ParticleSet_TimingLog():
             if mpi_rank == 0:
                 self.etime = MPI.Wtime()
         else:
-            self.etime = time_module.time()
+            self.etime = time_module.perf_counter()
 
     def accumulate_timing(self):
         self.mtime += (self.etime-self.stime)
@@ -92,6 +92,7 @@ class ParticleSet_Benchmark(ParticleSet):
     def __init__(self, fieldset, pclass=JITParticle, lon=None, lat=None, depth=None, time=None, repeatdt=None,
                  lonlatdepth_dtype=None, pid_orig=None, **kwargs):
         super(ParticleSet_Benchmark, self).__init__(fieldset, pclass, lon, lat, depth, time, repeatdt, lonlatdepth_dtype, pid_orig, **kwargs)
+        self.total_log = ParticleSet_TimingLog()
         self.compute_log = ParticleSet_TimingLog()
         self.io_log = ParticleSet_TimingLog()
         self.plot_log = ParticleSet_TimingLog()
@@ -232,6 +233,7 @@ class ParticleSet_Benchmark(ParticleSet):
         if verbose_progress:
             pbar = self._create_progressbar_(_starttime, endtime)
         while (time < endtime and dt > 0) or (time > endtime and dt < 0) or dt == 0:
+            self.total_log.start_timing()
             if verbose_progress is None and time_module.time() - walltime_start > 10:
                 # Showing progressbar if runtime > 10 seconds
                 if output_file:
@@ -291,9 +293,13 @@ class ParticleSet_Benchmark(ParticleSet):
                 pbar.update(abs(time - _starttime))
                 self.plot_log.stop_timing()
                 self.plot_log.accumulate_timing()
+            self.total_log.stop_timing()
+            self.total_log.accumulate_timing()
+
             self.compute_log.advance_iteration()
             self.io_log.advance_iteration()
             self.plot_log.advance_iteration()
+            self.total_log.advance_iteration()
 
         if output_file:
             self.io_log.start_timing()
