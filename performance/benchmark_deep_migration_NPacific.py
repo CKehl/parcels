@@ -19,6 +19,7 @@ import matplotlib.ticker as mtick
 from numpy import *
 import scipy.linalg
 import math as math
+import itertools
 warnings.filterwarnings("ignore")
 
 try:
