@@ -102,12 +102,14 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
     t_scaler = 1. * 10./1.0
     npart_scaler = 1.0 / 1000.0
     for i in range(len(total_times)):
-        if i==0:
-            plot_t.append( (total_times[i]-global_t_0)*t_scaler )
-            cum_t += (total_times[i]-global_t_0)
-        else:
-            plot_t.append( (total_times[i]-total_times[i-1])*t_scaler )
-            cum_t += (total_times[i]-total_times[i-1])
+        #if i==0:
+        #    plot_t.append( (total_times[i]-global_t_0)*t_scaler )
+        #    cum_t += (total_times[i]-global_t_0)
+        #else:
+        #    plot_t.append( (total_times[i]-total_times[i-1])*t_scaler )
+        #    cum_t += (total_times[i]-total_times[i-1])
+        plot_t.append( total_times[i]*t_scaler )
+        cum_t += (total_times[i])
 
     for i in range(len(compute_times)):
         plot_ct.append(compute_times[i] * t_scaler)
