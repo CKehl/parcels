@@ -87,12 +87,14 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
     t_scaler = 1. * 10./1.0
     npart_scaler = 1.0 / 1000.0
     for i in range(len(total_times)):
-        if i==0:
-            plot_t.append( (total_times[i]-global_t_0)*t_scaler )
-            cum_t += (total_times[i]-global_t_0)
-        else:
-            plot_t.append( (total_times[i]-total_times[i-1])*t_scaler )
-            cum_t += (total_times[i]-total_times[i-1])
+        #if i==0:
+        #    plot_t.append( (total_times[i]-global_t_0)*t_scaler )
+        #    cum_t += (total_times[i]-global_t_0)
+        #else:
+        #    plot_t.append( (total_times[i]-total_times[i-1])*t_scaler )
+        #    cum_t += (total_times[i]-total_times[i-1])
+        plot_t.append( total_times[i]*t_scaler )
+        cum_t += (total_times[i])
 
     for i in range(len(compute_times)):
         plot_ct.append(compute_times[i] * t_scaler)
@@ -469,10 +471,10 @@ if __name__ == "__main__":
         mpi_comm.Barrier()
         if mpi_comm.Get_rank() == 0:
             # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
-            plot(perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
+            plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, perflog.memory_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
     else:
         # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
-        plot(perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
+        plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, perflog.memory_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
 
     print('Execution finished')
 
