@@ -90,6 +90,7 @@ class PerformanceLog():
             self.samples.append(self._iter)
             self._iter+=1
 
+
 def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFilePath):
     plot_t = []
     plot_ct = []
@@ -162,9 +163,9 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
     ax.set_xlabel('iteration')
     plt.savefig(os.path.join(odir, imageFilePath), dpi=600, format='png')
 
-    sys.stdout.write("cumulative total runtime: {}".format(cum_t))
-    sys.stdout.write("cumulative compute time: {}".format(cum_ct))
-    sys.stdout.write("cumulative I/O time: {}".format(cum_iot))
+    sys.stdout.write("cumulative total runtime: {}\n".format(cum_t))
+    sys.stdout.write("cumulative compute time: {}\n".format(cum_ct))
+    sys.stdout.write("cumulative I/O time: {}\n".format(cum_iot))
 
 
 def Kooi(particle,fieldset,time):  
@@ -498,7 +499,7 @@ if __name__ == "__main__":
     else:
         starttime = ostime.time()
 
-    pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+    pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=hrsoutdt))
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
@@ -546,5 +547,6 @@ if __name__ == "__main__":
         # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
         plot(perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
 
+    pfile.close()
 
     print('Execution finished')
