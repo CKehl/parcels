@@ -123,10 +123,23 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
         for i in range(len(memory_used)):
             plot_mem.append(memory_used[i] * mem_scaler)
 
+    # do_ct_plot = True
+    do_iot_plot = True
+    do_mem_plot = True
+    do_npart_plot = True
     assert (len(plot_t) == len(plot_ct))
-    assert (len(plot_t) == len(plot_iot))
+    # assert (len(plot_t) == len(plot_iot))
+    if len(plot_t) != len(plot_iot):
+        print("plot_t and plot_iot have different lengths ({} vs {})".format(len(plot_t), len(plot_iot)))
+        do_iot_plot = False
     # assert (len(plot_t) == len(plot_mem))
-    assert (len(plot_t) == len(plot_npart))
+    if len(plot_t) != len(plot_mem):
+        print("plot_t and plot_mem have different lengths ({} vs {})".format(len(plot_t), len(plot_mem)))
+        do_mem_plot = False
+    # assert (len(plot_t) == len(plot_npart))
+    if len(plot_t) != len(plot_npart):
+        print("plot_t and plot_npart have different lengths ({} vs {})".format(len(plot_t), len(plot_npart)))
+        do_npart_plot = False
     x = []
     for i in itertools.islice(itertools.count(), 0, len(plot_t)):
         x.append(i)
@@ -134,10 +147,14 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
     fig, ax = plt.subplots(1, 1, figsize=(21, 12))
     ax.plot(x, plot_t, 'o-', label="total time_spent [100ms]")
     ax.plot(x, plot_ct, 'o-', label="compute time_spent [100ms]")
-    ax.plot(x, plot_iot, 'o-', label="io time_spent [100ms]")
-    if (memory_used is not None) and (len(memory_used) == len(plot_t)):
+    # == this is still the part that breaks - as they are on different time scales, possibly leave them out ? == #
+    if do_iot_plot:
+        ax.plot(x, plot_iot, 'o-', label="io time_spent [100ms]")
+    if (memory_used is not None) and do_mem_plot:
         #ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [100 MB]")
         ax.plot(x, plot_mem, 'x-', label="memory_used (cumulative) [1 GB]")
+    if do_npart_plot:
+        ax.plot(x, plot_npart, '-', label="sim. particles [# 1000]")
     plt.xlim([0, 730])
     plt.ylim([0, 120])
     plt.legend()
