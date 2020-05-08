@@ -59,7 +59,8 @@ class PerformanceLog():
                 Nparticles_local = len(self.pset)
                 Nparticles_global = mpi_comm.reduce(Nparticles_local, op=MPI.SUM, root=0)
             if mpi_rank == 0:
-                self.times_steps.append(MPI.Wtime())
+                #self.times_steps.append(MPI.Wtime())
+                self.times_steps.append(ostime.process_time())
                 self.memory_steps.append(mem_B_used_total)
                 if self.pset is not None:
                     self.Nparticles_step.append(Nparticles_global)
@@ -67,7 +68,8 @@ class PerformanceLog():
                 self._iter+=1
         else:
             process = psutil.Process(os.getpid())
-            self.times_steps.append(ostime.time())
+            #self.times_steps.append(ostime.time())
+            self.times_steps.append(ostime.process_time())
             self.memory_steps.append(process.memory_info().rss)
             if self.pset is not None:
                 self.Nparticles_step.append(len(self.pset))
@@ -249,9 +251,11 @@ if __name__=='__main__':
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            global_t_0 = MPI.Wtime()
+            #global_t_0 = MPI.Wtime()
+            global_t_0 = ostime.process_time()
     else:
-        global_t_0 = ostime.time()
+        #global_t_0 = ostime.time()
+        global_t_0 = ostime.process_time()
 
     simStart = None
     for f in fieldset.get_fields():
@@ -336,9 +340,11 @@ if __name__=='__main__':
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            starttime = MPI.Wtime()
+            #starttime = MPI.Wtime()
+            starttime = ostime.process_time()
     else:
-        starttime = ostime.time()
+        #starttime = ostime.time()
+        starttime = ostime.process_time()
     kernels = pset.Kernel(AdvectionRK4,delete_cfiles=True)
     kernels += pset.Kernel(periodicBC, delete_cfiles=True)
     if agingParticles:
@@ -362,9 +368,11 @@ if __name__=='__main__':
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            endtime = MPI.Wtime()
+            #endtime = MPI.Wtime()
+            endtime = ostime.process_time()
     else:
-        endtime = ostime.time()
+        #endtime = ostime.time()
+        endtime = ostime.process_time()
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD

@@ -75,7 +75,8 @@ class PerformanceLog():
                 Nparticles_local = len(self.pset)
                 Nparticles_global = mpi_comm.reduce(Nparticles_local, op=MPI.SUM, root=0)
             if mpi_rank == 0:
-                self.times_steps.append(MPI.Wtime())
+                # self.times_steps.append(MPI.Wtime())
+                self.times_steps.append(ostime.process_time())
                 self.memory_steps.append(mem_B_used_total)
                 if self.pset is not None:
                     self.Nparticles_step.append(Nparticles_global)
@@ -83,7 +84,8 @@ class PerformanceLog():
                 self._iter+=1
         else:
             process = psutil.Process(os.getpid())
-            self.times_steps.append(ostime.time())
+            #self.times_steps.append(ostime.time())
+            self.times_steps.append(ostime.process_time())
             self.memory_steps.append(process.memory_info().rss)
             if self.pset is not None:
                 self.Nparticles_step.append(len(self.pset))
@@ -91,7 +93,7 @@ class PerformanceLog():
             self._iter+=1
 
 
-def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFilePath):
+def plot(total_times = [], compute_times = [], io_times = [], memory_used = [], nparticles = [], imageFilePath = ""):
     plot_t = []
     plot_ct = []
     plot_iot = []
@@ -101,7 +103,7 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
     cum_iot = 0
     t_scaler = 1. * 10./1.0
     npart_scaler = 1.0 / 1000.0
-    for i in range(len(total_times)):
+    for i in range(0, len(total_times)):
         #if i==0:
         #    plot_t.append( (total_times[i]-global_t_0)*t_scaler )
         #    cum_t += (total_times[i]-global_t_0)
@@ -111,20 +113,20 @@ def plot(total_times, compute_times, io_times, memory_used, nparticles, imageFil
         plot_t.append( total_times[i]*t_scaler )
         cum_t += (total_times[i])
 
-    for i in range(len(compute_times)):
+    for i in range(0, len(compute_times)):
         plot_ct.append(compute_times[i] * t_scaler)
         cum_ct += compute_times[i]
-    for i in range(len(io_times)):
+    for i in range(0, len(io_times)):
         plot_iot.append(io_times[i] * t_scaler)
         cum_iot += io_times[i]
-    for i in range(len(nparticles)):
+    for i in range(0, len(nparticles)):
         plot_npart.append(nparticles[i] * npart_scaler)
 
     if memory_used is not None:
         #mem_scaler = (1*10)/(1024*1024*1024)
         mem_scaler = 1 / (1024 * 1024 * 1024)
         plot_mem = []
-        for i in range(len(memory_used)):
+        for i in range(0, len(memory_used)):
             plot_mem.append(memory_used[i] * mem_scaler)
 
     # do_ct_plot = True
@@ -301,7 +303,7 @@ class plastic_particle(JITParticle): #ScipyParticle): #
 
 def DeleteParticle(particle, fieldset, time):
     """Kernel for deleting particles if they are out of bounds."""
-    print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
+    # print('particle is deleted') #print(particle.lon, particle.lat, particle.depth)
     particle.delete()
 
 def getclosest_ij(lats,lons,latpt,lonpt):     
@@ -398,9 +400,11 @@ if __name__ == "__main__":
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
             # global_t_0 = ostime.time()
-            global_t_0 = MPI.Wtime()
+            # global_t_0 = MPI.Wtime()
+            global_t_0 = ostime.process_time()
     else:
-        global_t_0 = ostime.time()
+        # global_t_0 = ostime.time()
+        global_t_0 = ostime.process_time()
 
     ufiles = sorted(glob(dirread+'ORCA0083-N06_2000*d05U.nc')) #0105d05
     vfiles = sorted(glob(dirread+'ORCA0083-N06_2000*d05V.nc'))
@@ -497,9 +501,11 @@ if __name__ == "__main__":
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
             # global_t_0 = ostime.time()
-            starttime = MPI.Wtime()
+            # starttime = MPI.Wtime()
+            starttime = ostime.process_time()
     else:
-        starttime = ostime.time()
+        #starttime = ostime.time()
+        starttime = ostime.process_time()
 
     pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=hrsoutdt))
 
@@ -508,9 +514,11 @@ if __name__ == "__main__":
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
             # global_t_0 = ostime.time()
-            endtime = MPI.Wtime()
+            # endtime = MPI.Wtime()
+            endtime = ostime.process_time()
     else:
-        endtime = ostime.time()
+        # endtime = ostime.time()
+        endtime = ostime.process_time()
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
@@ -522,7 +530,7 @@ if __name__ == "__main__":
                 else:
                     dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
             if len(perflog.Nparticles_step)>0:
-                sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+                sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
             sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
             avg_time = np.mean(np.array(dt_time, dtype=np.float64))
             sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
@@ -534,7 +542,7 @@ if __name__ == "__main__":
             else:
                 dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
         if len(perflog.Nparticles_step) > 0:
-            sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+            sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
         sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
         avg_time = np.mean(np.array(dt_time, dtype=np.float64))
         sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))

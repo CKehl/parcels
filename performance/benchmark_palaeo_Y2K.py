@@ -61,7 +61,8 @@ class PerformanceLog():
                 Nparticles_local = len(self.pset)
                 Nparticles_global = mpi_comm.reduce(Nparticles_local, op=MPI.SUM, root=0)
             if mpi_rank == 0:
-                self.times_steps.append(MPI.Wtime())
+                #self.times_steps.append(MPI.Wtime())
+                self.times_steps.append(ostime.process_time())
                 self.memory_steps.append(mem_B_used_total)
                 if self.pset is not None:
                     self.Nparticles_step.append(Nparticles_global)
@@ -69,7 +70,8 @@ class PerformanceLog():
                 self._iter+=1
         else:
             process = psutil.Process(os.getpid())
-            self.times_steps.append(ostime.time())
+            #self.times_steps.append(ostime.time())
+            self.times_steps.append(ostime.process_time())
             self.memory_steps.append(process.memory_info().rss)
             if self.pset is not None:
                 self.Nparticles_step.append(len(self.pset))
@@ -370,9 +372,11 @@ if __name__ == "__main__":
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
             # global_t_0 = ostime.time()
-            global_t_0 = MPI.Wtime()
+            # global_t_0 = MPI.Wtime()
+            global_t_0 = ostime.process_time()
     else:
-        global_t_0 = ostime.time()
+        # global_t_0 = ostime.time()
+        global_t_0 = ostime.process_time()
 
     ufiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05U.nc'))
     vfiles = sorted(glob(dirread_top + 'means/ORCA0083-N06_2000????d05V.nc'))
@@ -418,10 +422,12 @@ if __name__ == "__main__":
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            # global_t_0 = ostime.time()
-            starttime = MPI.Wtime()
+            # starttime = ostime.time()
+            # starttime = MPI.Wtime()
+            starttime = ostime.process_time()
     else:
-        starttime = ostime.time()
+        # starttime = ostime.time()
+        starttime = ostime.process_time()
 
     # pset.execute(kernels, runtime=delta(days=365*9), dt=delta(minutes=-20), output_file=pfile, verbose_progress=False,
     # recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs)
@@ -431,10 +437,12 @@ if __name__ == "__main__":
         mpi_comm = MPI.COMM_WORLD
         mpi_rank = mpi_comm.Get_rank()
         if mpi_rank==0:
-            # global_t_0 = ostime.time()
-            endtime = MPI.Wtime()
+            # endtime = ostime.time()
+            # endtime = MPI.Wtime()
+            endtime = ostime.process_time()
     else:
-        endtime = ostime.time()
+        #endtime = ostime.time()
+        endtime = ostime.process_time()
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
@@ -446,7 +454,7 @@ if __name__ == "__main__":
                 else:
                     dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
             if len(perflog.Nparticles_step)>0:
-                sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+                sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
             sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
             avg_time = np.mean(np.array(dt_time, dtype=np.float64))
             sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
@@ -458,7 +466,7 @@ if __name__ == "__main__":
             else:
                 dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
         if len(perflog.Nparticles_step) > 0:
-            sys.stdout.write("final # particles: {}".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+            sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
         sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
         avg_time = np.mean(np.array(dt_time, dtype=np.float64))
         sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))

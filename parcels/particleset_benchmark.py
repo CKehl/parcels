@@ -37,7 +37,9 @@ class ParticleSet_TimingLog():
             mpi_comm = MPI.COMM_WORLD
             mpi_rank = mpi_comm.Get_rank()
             if mpi_rank == 0:
-                self.stime = MPI.Wtime()
+                #self.stime = MPI.Wtime()
+                #self.stime = time_module.perf_counter()
+                self.stime = time_module.process_time()
         else:
             self.stime = time_module.perf_counter()
 
@@ -46,12 +48,22 @@ class ParticleSet_TimingLog():
             mpi_comm = MPI.COMM_WORLD
             mpi_rank = mpi_comm.Get_rank()
             if mpi_rank == 0:
-                self.etime = MPI.Wtime()
+                #self.etime = MPI.Wtime()
+                #self.etime = time_module.perf_counter()
+                self.etime = time_module.process_time()
         else:
             self.etime = time_module.perf_counter()
 
     def accumulate_timing(self):
-        self.mtime += (self.etime-self.stime)
+        if MPI:
+            mpi_comm = MPI.COMM_WORLD
+            mpi_rank = mpi_comm.Get_rank()
+            if mpi_rank == 0:
+                self.mtime += (self.etime-self.stime)
+            else:
+                self.mtime = 0
+        else:
+            self.mtime += (self.etime-self.stime)
 
     def advance_iteration(self):
         if MPI:
