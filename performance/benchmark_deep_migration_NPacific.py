@@ -485,9 +485,9 @@ if __name__ == "__main__":
                                  time = time0,
                                  depth = z_release) #[1.]
 
-    perflog = PerformanceLog()
-    perflog.pset = pset
-    postProcessFuncs = [perflog.advance,]
+    # perflog = PerformanceLog()
+    # perflog.pset = pset
+    #postProcessFuncs = [perflog.advance,]
 
     """ Kernal + Execution"""
     # kernels = pset.Kernel(AdvectionRK4_3D) + pset.Kernel(seawaterdensity.polyTEOS10_bsq) + pset.Kernel(Profiles) + pset.Kernel(Kooi)
@@ -507,7 +507,8 @@ if __name__ == "__main__":
         #starttime = ostime.time()
         starttime = ostime.process_time()
 
-    pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle}, postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=hrsoutdt))
+    # postIterationCallbacks = postProcessFuncs, callbackdt = delta(hours=hrsoutdt)
+    pset.execute(kernels, runtime=delta(days=time_in_days), dt=delta(seconds = secsdt), output_file=pfile, verbose_progress=True, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
@@ -523,40 +524,30 @@ if __name__ == "__main__":
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         if mpi_comm.Get_rank() == 0:
-            dt_time = []
-            for i in range(len(perflog.times_steps)):
-                if i==0:
-                    dt_time.append( (perflog.times_steps[i]-global_t_0) )
-                else:
-                    dt_time.append( (perflog.times_steps[i]-perflog.times_steps[i-1]) )
-            if len(perflog.Nparticles_step)>0:
-                sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+            size_Npart = len(pset.nparticle_log.params)
+            if size_Npart>0:
+                sys.stdout.write("final # particles: {}\n".format(pset.nparticle_log.params[size_Npart-1]))
             sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime-starttime))
-            avg_time = np.mean(np.array(dt_time, dtype=np.float64))
+            avg_time = np.mean(np.array(pset.total_log.times_steps, dtype=np.float64))
             sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time*1000.0))
     else:
-        dt_time = []
-        for i in range(len(perflog.times_steps)):
-            if i == 0:
-                dt_time.append((perflog.times_steps[i] - global_t_0))
-            else:
-                dt_time.append((perflog.times_steps[i] - perflog.times_steps[i - 1]))
-        if len(perflog.Nparticles_step) > 0:
-            sys.stdout.write("final # particles: {}\n".format(perflog.Nparticles_step[len(perflog.Nparticles_step)-1]))
+        size_Npart = len(pset.nparticle_log.params)
+        if size_Npart > 0:
+            sys.stdout.write("final # particles: {}\n".format(pset.nparticle_log.params[size_Npart - 1]))
         sys.stdout.write("Time of pset.execute(): {} sec.\n".format(endtime - starttime))
-        avg_time = np.mean(np.array(dt_time, dtype=np.float64))
+        avg_time = np.mean(np.array(pset.total_log.times_steps, dtype=np.float64))
         sys.stdout.write("Avg. kernel update time: {} msec.\n".format(avg_time * 1000.0))
+
+    pfile.close()
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
         mpi_comm.Barrier()
         if mpi_comm.Get_rank() == 0:
             # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
-            plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, perflog.memory_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
+            plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.mem_log.params, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
     else:
         # plot(perflog.samples, perflog.times_steps, perflog.memory_steps, pset.compute_log.times_steps, pset.io_log.times_steps, os.path.join(odir, args.imageFileName))
-        plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, perflog.memory_steps, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
-
-    pfile.close()
+        plot(pset.total_log.times_steps, pset.compute_log.times_steps, pset.io_log.times_steps, pset.mem_log.params, pset.nparticle_log.params, os.path.join(odir, args.imageFileName))
 
     print('Execution finished')
