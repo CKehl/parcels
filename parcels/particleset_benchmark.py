@@ -1,10 +1,8 @@
-import collections
 import time as time_module
-from datetime import date
 from datetime import datetime
 from datetime import timedelta as delta
-# import psutil
-# import os
+import psutil
+import os
 
 
 import numpy as np
@@ -109,6 +107,8 @@ class ParticleSet_Benchmark(ParticleSet):
         self.io_log = ParticleSet_TimingLog()
         self.plot_log = ParticleSet_TimingLog()
         self.nparticle_log = ParticleSet_ParamLogging()
+        self.process = psutil.Process(os.getpid())
+        self.mem_log = ParticleSet_ParamLogging()
 
     #@profile
     def execute(self, pyfunc=AdvectionRK4, endtime=None, runtime=None, dt=1.,
@@ -307,6 +307,14 @@ class ParticleSet_Benchmark(ParticleSet):
                 self.plot_log.accumulate_timing()
             self.total_log.stop_timing()
             self.total_log.accumulate_timing()
+            mem_B_used_total = 0
+            if MPI:
+                mpi_comm = MPI.COMM_WORLD
+                mem_B_used = self.process.memory_info().rss
+                mem_B_used_total = mpi_comm.reduce(mem_B_used, op=MPI.SUM, root=0)
+            else:
+                mem_B_used_total = self.process.memory_info().rss
+            self.mem_log.advance_iteration(mem_B_used_total)
 
             self.compute_log.advance_iteration()
             self.io_log.advance_iteration()
