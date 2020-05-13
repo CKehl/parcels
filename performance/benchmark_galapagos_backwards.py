@@ -208,7 +208,7 @@ if __name__=='__main__':
 
 
 
-    fieldset, fu = create_galapagos_fieldset(datahead, True, wstokes)
+    fieldset, fU = create_galapagos_fieldset(datahead, True, wstokes)
     fname = os.path.join(odir,"galapagosparticles_bwd_wstokes_v2.nc") if wstokes else os.path.join(odir,"galapagosparticles_bwd_v2.nc")
 
     galapagos_extent = [-91.8, -89, -1.4, 0.7]
@@ -232,7 +232,7 @@ if __name__=='__main__':
         #starttime = ostime.time()
         starttime = ostime.process_time()
 
-    pset.execute(kernel, dt=delta(hours=-1), output_file=outfile, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+    pset.execute(kernel, dt=delta(hours=-1), runtime=delta(days=time_in_days), output_file=outfile, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
 
     if MPI:
         mpi_comm = MPI.COMM_WORLD
