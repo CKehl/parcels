@@ -7,10 +7,10 @@ from parcels.field import Field
 from parcels.tools.error import ErrorCode
 from parcels.tools.loggers import logger
 
-
 __all__ = ['ScipyParticle', 'JITParticle', 'Variable']
 
 indicators_64bit = [np.float64, np.int64, c_void_p]
+
 
 class Variable(object):
     """Descriptor class that delegates data access to particle data
@@ -59,7 +59,7 @@ class ParticleType(object):
     :param user_vars: Optional list of (name, dtype) tuples for custom variables
     """
 
-    @profile
+    #@profile
     def __init__(self, pclass):
         if not isinstance(pclass, type):
             raise TypeError("Class object required to derive ParticleType")
@@ -117,7 +117,7 @@ class _Particle(object):
     """Private base class for all particle types"""
     lastID = 0  # class-level variable keeping track of last Particle ID used
 
-    @profile
+    #@profile
     def __init__(self):
         ptype = self.getPType()
         # Explicit initialisation of all particle variables
@@ -175,8 +175,8 @@ class ScipyParticle(_Particle):
     depth = Variable('depth', dtype=np.float32)
     time = Variable('time', dtype=np.float64)
     id = Variable('id', dtype=np.int32)
-    dt = Variable('dt', dtype=np.float32, to_write=False)
-    state = Variable('state', dtype=np.int32, initial=ErrorCode.Success, to_write=False)
+    dt = Variable('dt', dtype=np.float64, to_write=False)
+    state = Variable('state', dtype=np.int32, initial=ErrorCode.Evaluate, to_write=False)
 
     def __init__(self, lon, lat, pid, fieldset, depth=0., time=0., cptr=None):
 
@@ -202,8 +202,14 @@ class ScipyParticle(_Particle):
     def delete(self):
         self.state = ErrorCode.Delete
 
-    def reset_state(self):
+    def succeeded(self):
         self.state = ErrorCode.Success
+
+    def isComputed(self):
+        return self.state == ErrorCode.Success
+
+    def reset_state(self):
+        self.state = ErrorCode.Evaluate
 
     @classmethod
     def set_lonlatdepth_dtype(cls, dtype):
@@ -218,6 +224,7 @@ class ScipyParticle(_Particle):
                 self._next_dt = None
         else:
             self._next_dt = next_dt
+
 
 class JITParticle(ScipyParticle):
     """Particle class for JIT-based (Just-In-Time) Particle objects
@@ -239,7 +246,7 @@ class JITParticle(ScipyParticle):
     czi = Variable('czi', dtype=np.dtype(c_void_p), to_write=False)
     cti = Variable('cti', dtype=np.dtype(c_void_p), to_write=False)
 
-    @profile
+    #@profile
     def __init__(self, *args, **kwargs):
         self._cptr = kwargs.pop('cptr', None)
         if self._cptr is None:
@@ -247,7 +254,7 @@ class JITParticle(ScipyParticle):
             ptype = self.getPType()
             # here, np.empty is potentially hazardous - the pointer should always be initialized to 0 (unless data is set)
             self._cptr = np.empty(1, dtype=ptype.dtype)[0]
-            self._cptr = np.zeros(1, dtype=ptype.dtype)[0]
+            # self._cptr = np.zeros(1, dtype=ptype.dtype)[0]
         super(JITParticle, self).__init__(*args, **kwargs)
 
         fieldset = kwargs.get('fieldset')

@@ -19,6 +19,7 @@ from parcels.kernel import Kernel
 from parcels.kernels.advection import AdvectionRK4
 from parcels.particle import JITParticle
 from parcels.particlefile import ParticleFile
+from parcels.tools.error import ErrorCode
 from parcels.tools.loggers import logger
 try:
     from mpi4py import MPI
@@ -353,7 +354,7 @@ class ParticleSet(object):
         #return self.particles[key]
         return self.retrieve_item(key)
 
-    @profile
+    #@profile
     def retrieve_item(self, key):
         return self.particles[key]
 
@@ -363,6 +364,17 @@ class ParticleSet(object):
     def __iadd__(self, particles):
         self.add(particles)
         return self
+
+    def _create_progressbar_(self, starttime, endtime):
+        pbar = None
+        try:
+            pbar = progressbar.ProgressBar(max_value=abs(endtime - starttime)).start()
+        except:  # for old versions of progressbar
+            try:
+                pbar = progressbar.ProgressBar(maxvalue=abs(endtime - starttime)).start()
+            except:  # for even older OR newer versions
+                pbar = progressbar.ProgressBar(maxval=abs(endtime - starttime)).start()
+        return pbar
 
     def add(self, particles):
         """Method to add particles to the ParticleSet"""
@@ -378,7 +390,7 @@ class ParticleSet(object):
             for p, pdata in zip(self.particles, self._particle_data):
                 p._cptr = pdata
 
-    @profile
+    #@profile
     def remove(self, indices):
         """Method to remove particles from the ParticleSet, based on their `indices`"""
         if isinstance(indices, collections.Iterable):
@@ -422,8 +434,8 @@ class ParticleSet(object):
         :param movie_background_field: field plotted as background in the movie if moviedt is set.
                                        'vector' shows the velocity as a vector field.
         :param verbose_progress: Boolean for providing a progress bar for the kernel execution loop.
-        :param postIterationCallbacks: Array of functions that are to be called after each iteration (post-process, non-Kernel)
-        :param callbackdt: timestep inverval to (latestly) interrupt the running kernel and invoke post-iteration callbacks from 'postIterationCallbacks'
+        :param postIterationCallbacks: (Optional) Array of functions that are to be called after each iteration (post-process, non-Kernel)
+        :param callbackdt: (Optional, in conjecture with 'postIterationCallbacks) timestep inverval to (latestly) interrupt the running kernel and invoke post-iteration callbacks from 'postIterationCallbacks'
         """
 
         # check if pyfunc has changed since last compile. If so, recompile
@@ -486,12 +498,14 @@ class ParticleSet(object):
             mintime, maxtime = self.fieldset.gridset.dimrange('time_full')
             endtime = maxtime if dt >= 0 else mintime
 
+        execute_once = False
         if abs(endtime-_starttime) < 1e-5 or dt == 0 or runtime == 0:
             dt = 0
             runtime = 0
             endtime = _starttime
             logger.warning_once("dt or runtime are zero, or endtime is equal to Particle.time. "
                                 "The kernels will be executed once, without incrementing time")
+            execute_once = True
 
         # Initialise particle timestepping
         for p in self:
@@ -524,10 +538,7 @@ class ParticleSet(object):
         if verbose_progress is None:
             walltime_start = time_module.time()
         if verbose_progress:
-            try:
-                pbar = progressbar.ProgressBar(max_value=abs(endtime - _starttime)).start()
-            except:  # for old versions of progressbar
-                pbar = progressbar.ProgressBar(maxvalue=abs(endtime - _starttime)).start()
+            pbar = self._create_progressbar_(_starttime, endtime)
         while (time < endtime and dt > 0) or (time > endtime and dt < 0) or dt == 0:
             if verbose_progress is None and time_module.time() - walltime_start > 10:
                 # Showing progressbar if runtime > 10 seconds
@@ -535,13 +546,14 @@ class ParticleSet(object):
                     logger.info('Temporary output files are stored in %s.' % output_file.tempwritedir_base)
                     logger.info('You can use "parcels_convert_npydir_to_netcdf %s" to convert these '
                                 'to a NetCDF file during the run.' % output_file.tempwritedir_base)
-                pbar = progressbar.ProgressBar(max_value=abs(endtime - _starttime)).start()
+                pbar = self._create_progressbar_(_starttime, endtime)
                 verbose_progress = True
             if dt > 0:
                 time = min(next_prelease, next_input, next_output, next_movie, next_callback, endtime)
             else:
                 time = max(next_prelease, next_input, next_output, next_movie, next_callback, endtime)
-            self.kernel.execute(self, endtime=time, dt=dt, recovery=recovery, output_file=output_file)
+            # ==== compute ==== #
+            self.kernel.execute(self, endtime=time, dt=dt, recovery=recovery, output_file=output_file, execute_once=execute_once)
             if abs(time-next_prelease) < tol:
                 pset_new = ParticleSet(fieldset=self.fieldset, time=time, lon=self.repeatlon,
                                        lat=self.repeatlat, depth=self.repeatdepth,
@@ -551,11 +563,12 @@ class ParticleSet(object):
                     p.dt = dt
                 self.add(pset_new)
                 next_prelease += self.repeatdt * np.sign(dt)
-            if abs(time-next_output) < tol:
+            # ==== end compute ==== #
+            if abs(time-next_output) < tol:  # ==== IO ==== #
                 if output_file:
                     output_file.write(self, time)
                 next_output += outputdt * np.sign(dt)
-            if abs(time-next_movie) < tol:
+            if abs(time-next_movie) < tol:  # ==== Plotting ==== #
                 self.show(field=movie_background_field, show_time=time, animation=True)
                 next_movie += moviedt * np.sign(dt)
             # ==== insert post-process here to also allow for memory clean-up via external func ==== #
@@ -564,11 +577,11 @@ class ParticleSet(object):
                     for extFunc in postIterationCallbacks:
                         extFunc()
                 next_callback += callbackdt * np.sign(dt)
-            if time != endtime:
+            if time != endtime:  # ==== IO ==== #
                 next_input = self.fieldset.computeTimeChunk(time, dt)
             if dt == 0:
                 break
-            if verbose_progress:
+            if verbose_progress:  # ==== Plotting ==== #
                 pbar.update(abs(time - _starttime))
 
         if output_file:

@@ -1,6 +1,8 @@
-from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, AdvectionRK4_3D, RectilinearZGrid, ErrorCode
+from parcels import FieldSet, ParticleSet, ScipyParticle, JITParticle, Variable, AdvectionRK4, AdvectionRK4_3D, RectilinearZGrid, ErrorCode, OutOfTimeError
 from parcels.field import Field, VectorField
 from parcels.tools.converters import TimeConverter, _get_cftime_calendars, _get_cftime_datetimes, UnitConverter, GeographicPolar
+import dask.array as da
+import dask
 from datetime import timedelta as delta
 import datetime
 import numpy as np
@@ -8,6 +10,9 @@ import xarray as xr
 import pytest
 from os import path
 import cftime
+import gc
+import psutil
+import os
 
 
 ptype = {'scipy': ScipyParticle, 'jit': JITParticle}
@@ -40,6 +45,17 @@ def test_fieldset_from_data(xdim, ydim):
     assert len(fieldset.V.data.shape) == 3
     assert np.allclose(fieldset.U.data[0, :], data['U'], rtol=1e-12)
     assert np.allclose(fieldset.V.data[0, :], data['V'], rtol=1e-12)
+
+
+def test_fieldset_extra_syntax():
+    """ Simple test for fieldset initialisation from data. """
+    data, dimensions = generate_fieldset(10, 10)
+    failed = False
+    try:
+        FieldSet.from_data(data, dimensions, unknown_keyword=5)
+    except SyntaxError:
+        failed = True
+    assert failed
 
 
 @pytest.mark.parametrize('ttype', ['float', 'datetime64'])
@@ -334,8 +350,111 @@ def test_vector_fields(mode, swapUV):
         assert abs(pset[0].lat - .5) < 1e-9
 
 
+@pytest.mark.parametrize('mode', ['scipy', 'jit'])
+@pytest.mark.parametrize('time_periodic', [4*86400.0, False])
+@pytest.mark.parametrize('field_chunksize', [False, 'auto', (1, 32, 32)])
+@pytest.mark.parametrize('with_GC', [False, True])
+def test_from_netcdf_memory_containment(mode, time_periodic, field_chunksize, with_GC):
+    if field_chunksize == 'auto':
+        dask.config.set({'array.chunk-size': '2MiB'})
+    else:
+        dask.config.set({'array.chunk-size': '128MiB'})
+
+    class PerformanceLog():
+        samples = []
+        memory_steps = []
+        _iter = 0
+
+        def advance(self):
+            process = psutil.Process(os.getpid())
+            self.memory_steps.append(process.memory_info().rss)
+            self.samples.append(self._iter)
+            self._iter += 1
+
+    def perIterGC():
+        gc.collect()
+
+    def periodicBoundaryConditions(particle, fieldset, time):
+        while particle.lon > 180.:
+            particle.lon -= 360.
+        while particle.lon < -180.:
+            particle.lon += 360.
+        while particle.lat > 90.:
+            particle.lat -= 180.
+        while particle.lat < -90.:
+            particle.lat += 180.
+
+    process = psutil.Process(os.getpid())
+    mem_0 = process.memory_info().rss
+    fnameU = path.join(path.dirname(__file__), 'test_data', 'perlinfieldsU.nc')
+    fnameV = path.join(path.dirname(__file__), 'test_data', 'perlinfieldsV.nc')
+    ufiles = [fnameU, ] * 4
+    #ufiles = [fnameU, ]
+    vfiles = [fnameV, ] * 4
+    #vfiles = [fnameV, ]
+    timestamps = np.arange(0, 4, 1) * 86400.0
+    #timestamps = np.expand_dims(timestamps, 0)
+    timestamps = np.expand_dims(timestamps, 1)
+    files = {'U': ufiles, 'V': vfiles}
+    variables = {'U': 'vozocrtx', 'V': 'vomecrty'}
+    #dimensions = {'time': 'time_counter', 'lon': 'nav_lon', 'lat': 'nav_lat'}
+    dimensions = {'lon': 'nav_lon', 'lat': 'nav_lat'}
+
+    fieldset = FieldSet.from_netcdf(files, variables, dimensions, timestamps=timestamps, time_periodic=time_periodic, allow_time_extrapolation=True if time_periodic in [False, None] else False, field_chunksize=field_chunksize)
+    #fieldset = FieldSet.from_netcdf(files, variables, dimensions, mesh='flat', timestamps=timestamps,
+    #                                deferred_load=True, time_periodic=time_periodic,
+    #                                allow_time_extrapolation=True if time_periodic not in [False, None] else False,
+    #                                field_chunksize=cs)
+    perflog = PerformanceLog()
+    postProcessFuncs = [perflog.advance, ]
+    if with_GC:
+        postProcessFuncs.append(perIterGC)
+    pset = ParticleSet(fieldset=fieldset, pclass=ptype[mode], lon=[0.5, ], lat=[0.5, ])
+    #pset = ParticleSet.from_line(fieldset, size=1, pclass=ptype[mode], start=(0.5, 0.5), finish=(0.5, 0.5))
+    mem_0 = process.memory_info().rss
+    mem_exhausted = False
+    try:
+        pset.execute(pset.Kernel(AdvectionRK4)+periodicBoundaryConditions, dt=delta(hours=1), runtime=delta(days=7), postIterationCallbacks=postProcessFuncs, callbackdt=delta(hours=12))
+    except MemoryError:
+        mem_exhausted = True
+    mem_steps_np = np.array(perflog.memory_steps)
+    if with_GC:
+        assert np.allclose(mem_steps_np[7:], perflog.memory_steps[-1], rtol=0.01)
+    if (field_chunksize is not False or with_GC) and mode != 'scipy':
+        assert np.alltrue((mem_steps_np-mem_0) < 4712832)   # represents 4 x [U|V] * sizeof(field data)
+    assert not mem_exhausted
+
+
+@pytest.mark.parametrize('mode', ['scipy', 'jit'])
+@pytest.mark.parametrize('time_periodic', [4*86400.0, False])
+@pytest.mark.parametrize('field_chunksize', [False, 'auto', {'x': 32, 'y': 32}, {'time_counter': 1, 'x': 32, 'y': 32}, (32, 32), (1, 32, 32)])
+@pytest.mark.parametrize('deferLoad', [True, False])
+def test_from_netcdf_field_chunking(mode, time_periodic, field_chunksize, deferLoad):
+    fnameU = path.join(path.dirname(__file__), 'test_data', 'perlinfieldsU.nc')
+    fnameV = path.join(path.dirname(__file__), 'test_data', 'perlinfieldsV.nc')
+    ufiles = [fnameU, ] * 4
+    #ufiles = [fnameU, ]
+    vfiles = [fnameV, ] * 4
+    #vfiles = [fnameV, ]
+    timestamps = np.arange(0, 4, 1) * 86400.0
+    #timestamps = np.expand_dims(timestamps, 0)
+    timestamps = np.expand_dims(timestamps, 1)
+    files = {'U': ufiles, 'V': vfiles}
+    variables = {'U': 'vozocrtx', 'V': 'vomecrty'}
+    #dimensions = {'time': 'time_counter', 'lon': 'nav_lon', 'lat': 'nav_lat'}
+    dimensions = {'lon': 'nav_lon', 'lat': 'nav_lat'}
+
+    #if cs not in ['auto', False]:
+    #    if isinstance(cs, tuple):
+    #        cs = {'time_counter': 1, 'x': cs, 'y': cs}
+    fieldset = FieldSet.from_netcdf(files, variables, dimensions, timestamps=timestamps, time_periodic=time_periodic, deferred_load=deferLoad, allow_time_extrapolation=True if time_periodic in [False, None] else False, field_chunksize=field_chunksize)
+    pset = ParticleSet.from_line(fieldset, size=1, pclass=ptype[mode],
+                                 start=(0.5, 0.5), finish=(0.5, 0.5))
+    pset.execute(AdvectionRK4, dt=1, runtime=1)
+
+
 @pytest.mark.parametrize('datetype', ['float', 'datetime64'])
-def test_timestaps(datetype, tmpdir):
+def test_timestamps(datetype, tmpdir):
     data1, dims1 = generate_fieldset(10, 10, 1, 10)
     data2, dims2 = generate_fieldset(10, 10, 1, 4)
     if datetype == 'float':
@@ -359,8 +478,8 @@ def test_timestaps(datetype, tmpdir):
     assert np.allclose(fieldset3.U.grid.time_full, fieldset4.U.grid.time_full)
 
     for d in [0, 8, 10, 13]:
-        fieldset3.computeTimeChunk(d*86400, 1)
-        fieldset4.computeTimeChunk(d*86400, 1)
+        fieldset3.computeTimeChunk(d*86400., 1.)
+        fieldset4.computeTimeChunk(d*86400., 1.)
         assert np.allclose(fieldset3.U.data, fieldset4.U.data)
 
 
@@ -461,7 +580,7 @@ def test_fieldset_defer_loading_function(zdim, scale_fac, tmpdir, filename='test
     dims0['depth'] = np.arange(0, zdim, 1)
     fieldset_out = FieldSet.from_data(data0, dims0)
     fieldset_out.write(filepath)
-    fieldset = FieldSet.from_parcels(filepath)
+    fieldset = FieldSet.from_parcels(filepath, field_chunksize=(1, 2, 2))
 
     # testing for combination of deferred-loaded and numpy Fields
     fieldset.add_field(Field('numpyfield', np.zeros((10, zdim, 3, 3)), grid=fieldset.U.grid))
@@ -476,12 +595,13 @@ def test_fieldset_defer_loading_function(zdim, scale_fac, tmpdir, filename='test
         # Calculating vertical weighted average
         for f in [fieldset.U, fieldset.V]:
             for tind in f.loaded_time_indices:
-                data = np.sum(f.data[tind, :] * DZ, axis=0) / sum(dz)
-                data = np.broadcast_to(data, (1, f.grid.zdim, f.grid.ydim, f.grid.xdim))
+                data = da.sum(f.data[tind, :] * DZ, axis=0) / sum(dz)
+                data = da.broadcast_to(data, (1, f.grid.zdim, f.grid.ydim, f.grid.xdim))
                 f.data = f.data_concatenate(f.data, data, tind)
 
     fieldset.compute_on_defer = compute
     fieldset.computeTimeChunk(1, 1)
+    assert isinstance(fieldset.U.data, da.core.Array)
     assert np.allclose(fieldset.U.data, scale_fac*(zdim-1.)/zdim)
 
     pset = ParticleSet(fieldset, JITParticle, 0, 0)
@@ -491,6 +611,40 @@ def test_fieldset_defer_loading_function(zdim, scale_fac, tmpdir, filename='test
 
     pset.execute(DoNothing, dt=3600)
     assert np.allclose(fieldset.U.data, scale_fac*(zdim-1.)/zdim)
+
+
+@pytest.mark.parametrize('time2', [2, 7])
+def test_fieldset_initialisation_kernel_dask(time2, tmpdir, filename='test_parcels_defer_loading'):
+    filepath = tmpdir.join(filename)
+    data0, dims0 = generate_fieldset(3, 3, 4, 10)
+    data0['U'] = np.random.rand(10, 4, 3, 3)
+    dims0['time'] = np.arange(0, 10, 1)
+    dims0['depth'] = np.arange(0, 4, 1)
+    fieldset_out = FieldSet.from_data(data0, dims0)
+    fieldset_out.write(filepath)
+    fieldset = FieldSet.from_parcels(filepath, field_chunksize=(1, 2, 2))
+
+    def SampleField(particle, fieldset, time):
+        particle.u_kernel = fieldset.U[time, particle.depth, particle.lat, particle.lon]
+
+    class SampleParticle(JITParticle):
+        u_kernel = Variable('u_kernel', dtype=np.float32, initial=0.)
+        u_scipy = Variable('u_scipy', dtype=np.float32, initial=fieldset.U)
+
+    pset = ParticleSet(fieldset, pclass=SampleParticle, time=[0, time2],
+                       lon=[0.5, 0.5], lat=[0.5, 0.5], depth=[0.5, 0.5])
+
+    if time2 > 2:
+        failed = False
+        try:
+            pset.execute(SampleField, dt=0.)
+        except OutOfTimeError:
+            failed = True
+        assert failed
+    else:
+        pset.execute(SampleField, dt=0.)
+        assert np.allclose([p.u_kernel for p in pset], [p.u_scipy for p in pset])
+        assert isinstance(fieldset.U.data, da.core.Array)
 
 
 @pytest.mark.parametrize('tdim', [10, None])

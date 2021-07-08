@@ -17,7 +17,6 @@ def pclass(mode):
     return SampleParticle
 
 
-@pytest.fixture
 def k_sample_uv():
     def SampleUV(particle, fieldset, time):
         particle.u = fieldset.U[time, particle.depth, particle.lat, particle.lon]
@@ -25,14 +24,22 @@ def k_sample_uv():
     return SampleUV
 
 
-@pytest.fixture
+@pytest.fixture(name="k_sample_uv")
+def k_sample_uv_fixture():
+    return k_sample_uv()
+
+
 def k_sample_p():
     def SampleP(particle, fieldset, time):
         particle.p = fieldset.P[time, particle.depth, particle.lat, particle.lon]
     return SampleP
 
 
-@pytest.fixture
+@pytest.fixture(name="k_sample_p")
+def k_sample_P_fixture():
+    return k_sample_p()
+
+
 def fieldset(xdim=200, ydim=100):
     """ Standard fieldset spanning the earth's coordinates with U and V
         equivalent to longitude and latitude in deg.
@@ -46,7 +53,11 @@ def fieldset(xdim=200, ydim=100):
     return FieldSet.from_data(data, dimensions, mesh='flat', transpose=True)
 
 
-@pytest.fixture
+@pytest.fixture(name="fieldset")
+def fieldset_fixture(xdim=200, ydim=100):
+    return fieldset(xdim=xdim, ydim=ydim)
+
+
 def fieldset_geometric(xdim=200, ydim=100):
     """ Standard earth fieldset with U and V equivalent to lon/lat in m. """
     lon = np.linspace(-180, 180, xdim, dtype=np.float32)
@@ -62,7 +73,11 @@ def fieldset_geometric(xdim=200, ydim=100):
     return fieldset
 
 
-@pytest.fixture
+@pytest.fixture(name="fieldset_geometric")
+def fieldset_geometric_fixture(xdim=200, ydim=100):
+    return fieldset_geometric(xdim=xdim, ydim=ydim)
+
+
 def fieldset_geometric_polar(xdim=200, ydim=100):
     """ Standard earth fieldset with U and V equivalent to lon/lat in m
         and the inversion of the pole correction applied to U.
@@ -78,6 +93,11 @@ def fieldset_geometric_polar(xdim=200, ydim=100):
     data = {'U': U, 'V': V}
     dimensions = {'lon': lon, 'lat': lat}
     return FieldSet.from_data(data, dimensions, mesh='spherical', transpose=True)
+
+
+@pytest.fixture(name="fieldset_geometric_polar")
+def fieldset_geometric_polar_fixture(xdim=200, ydim=100):
+    return fieldset_geometric_polar(xdim=xdim, ydim=ydim)
 
 
 def test_fieldset_sample(fieldset, xdim=120, ydim=80):
@@ -380,6 +400,28 @@ def test_sampling_out_of_bounds_time(mode, allow_time_extrapolation, k_sample_p,
     else:
         with pytest.raises(RuntimeError):
             pset.execute(k_sample_p, runtime=0.1, dt=0.1)
+
+
+@pytest.mark.parametrize('mode', ['jit', 'scipy'])
+@pytest.mark.parametrize('ugridfactor', [1, 10])
+def test_sampling_multiple_grid_sizes(mode, ugridfactor):
+    xdim, ydim = 10, 20
+    U = Field('U', np.zeros((ydim*ugridfactor, xdim*ugridfactor), dtype=np.float32),
+              lon=np.linspace(0., 1., xdim*ugridfactor, dtype=np.float32),
+              lat=np.linspace(0., 1., ydim*ugridfactor, dtype=np.float32))
+    V = Field('V', np.zeros((ydim, xdim), dtype=np.float32),
+              lon=np.linspace(0., 1., xdim, dtype=np.float32),
+              lat=np.linspace(0., 1., ydim, dtype=np.float32))
+    fieldset = FieldSet(U, V)
+    pset = ParticleSet(fieldset, pclass=pclass(mode), lon=[0.8], lat=[0.9])
+
+    if ugridfactor > 1:
+        assert fieldset.U.grid is not fieldset.V.grid
+    else:
+        assert fieldset.U.grid is fieldset.V.grid
+    pset.execute(AdvectionRK4, runtime=10, dt=1)
+    assert np.isclose(pset[0].lon, 0.8)
+    assert np.all((pset[0].xi >= 0) & (pset[0].xi < xdim*ugridfactor))
 
 
 @pytest.mark.parametrize('mode', ['jit', 'scipy'])
