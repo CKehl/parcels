@@ -453,6 +453,7 @@ static inline StatusCode temporal_interpolation_structured_grid(type_coord x, ty
   float data2D[2][2][2];
   float data3D[2][2][2][2];
 
+<<<<<<< Updated upstream
   // if we're in between time indices, and not at the end of the timeseries,
   // we'll make sure to interpolate data between the two time values
   // otherwise, we'll only use the data at the current time index
@@ -474,6 +475,58 @@ static inline StatusCode temporal_interpolation_structured_grid(type_coord x, ty
     // last param is a flag, which denotes that we only want the first timestep
     // (rather than both)
     status = getCell2D(f, xi[igrid], yi[igrid], ti[igrid], data2D, tii == 1); CHECKSTATUS(status);
+=======
+
+  if (ti[igrid] < grid->tdim-1 && time > grid->time[ti[igrid]]) {
+    float f0, f1;
+    double t0 = grid->time[ti[igrid]]; double t1 = grid->time[ti[igrid]+1];
+    /* Identify grid cell to sample through local linear search */
+    err = search_indices(x, y, z, grid, &xi[igrid], &yi[igrid], &zi[igrid], &xsi, &eta, &zeta, gcode, ti[igrid], time, t0, t1, interp_method); CHECKERROR(err);
+    if (grid->zdim==1){
+      err = getCell2D(f, xi[igrid], yi[igrid], ti[igrid], data2D, 0); CHECKERROR(err);
+    } else{
+      err = getCell3D(f, xi[igrid], yi[igrid], zi[igrid], ti[igrid], data3D, 0); CHECKERROR(err);
+    }
+    if ((interp_method == LINEAR) || (interp_method == CGRID_VELOCITY) || (interp_method == BGRID_VELOCITY) || (interp_method == BGRID_W_VELOCITY)){
+      if ((interp_method == CGRID_VELOCITY) || (interp_method == BGRID_W_VELOCITY)){ // interpolate w
+        xsi = 1;
+        eta = 1;
+      }
+      else if (interp_method == BGRID_VELOCITY){
+          zeta = 0;
+      }
+      if (grid->zdim==1){
+        err = spatial_interpolation_bilinear(xsi, eta, data2D[0], &f0); CHECKERROR(err);
+        err = spatial_interpolation_bilinear(xsi, eta, data2D[1], &f1); CHECKERROR(err);
+      } else {
+        err = spatial_interpolation_trilinear(xsi, eta, zeta, data3D[0], &f0); CHECKERROR(err);
+        err = spatial_interpolation_trilinear(xsi, eta, zeta, data3D[1], &f1); CHECKERROR(err);
+      }
+    }
+    else if  (interp_method == NEAREST){
+      if (grid->zdim==1){
+        err = spatial_interpolation_nearest2D(xsi, eta, data2D[0], &f0); CHECKERROR(err);
+        err = spatial_interpolation_nearest2D(xsi, eta, data2D[1], &f1); CHECKERROR(err);
+      } else {
+        err = spatial_interpolation_nearest3D(xsi, eta, zeta, data3D[0], &f0); CHECKERROR(err);
+        err = spatial_interpolation_nearest3D(xsi, eta, zeta, data3D[1], &f1); CHECKERROR(err);
+      }
+    }
+    else if  ((interp_method == CGRID_TRACER) || (interp_method == BGRID_TRACER)){
+      if (grid->zdim==1){
+        err = spatial_interpolation_tracer_c_grid_2D(data2D[0], &f0); CHECKERROR(err);
+        err = spatial_interpolation_tracer_c_grid_2D(data2D[1], &f1); CHECKERROR(err);
+      } else {
+        err = spatial_interpolation_tracer_c_grid_3D(data3D[0], &f0); CHECKERROR(err);
+        err = spatial_interpolation_tracer_c_grid_3D(data3D[1], &f1); CHECKERROR(err);
+      }
+    }
+    else {
+        return ERROR;
+    }
+    *value = f0 + (f1 - f0) * (float)((time - t0) / (t1 - t0));
+    return SUCCESS;
+>>>>>>> Stashed changes
   } else {
     if ((gridindexingtype == MOM5) && (zi[igrid] == -1)) {
       status = getCell3D(f, xi[igrid], yi[igrid], 0, ti[igrid], data3D, tii == 1); CHECKSTATUS(status);
@@ -521,12 +574,22 @@ static inline StatusCode temporal_interpolation_structured_grid(type_coord x, ty
         zeta = 0;
       }
     }
+<<<<<<< Updated upstream
     if ((gridindexingtype == MOM5) && (zi[igrid] == -1)) {
       INTERP(spatial_interpolation_bilinear, spatial_interpolation_trilinear_surface);
     } else if ((gridindexingtype == POP) && (zi[igrid] == grid->zdim-2)) {
       INTERP(spatial_interpolation_bilinear, spatial_interpolation_trilinear_bottom);
     } else {
       INTERP(spatial_interpolation_bilinear, spatial_interpolation_trilinear);
+=======
+    else if ((interp_method == CGRID_TRACER) || (interp_method == BGRID_TRACER)){
+      if (grid->zdim==1){
+        err = spatial_interpolation_tracer_c_grid_2D(data2D[0], value); CHECKERROR(err);
+      }
+      else {
+        err = spatial_interpolation_tracer_c_grid_3D(data3D[0], value); CHECKERROR(err);
+      }
+>>>>>>> Stashed changes
     }
   } else if (interp_method == NEAREST) {
     INTERP(spatial_interpolation_nearest2D, spatial_interpolation_nearest3D);

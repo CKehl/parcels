@@ -1006,6 +1006,7 @@ def test_fieldset_defer_loading_function(zdim, scale_fac, tmpdir, filename="test
     assert np.allclose(fieldset.U.data, scale_fac * (zdim - 1.0) / zdim)
 
 
+<<<<<<< Updated upstream
 @pytest.mark.parametrize("time2", [1, 7])
 def test_fieldset_initialisation_kernel_dask(time2, tmpdir, filename="test_parcels_defer_loading"):
     filepath = tmpdir.join(filename)
@@ -1057,25 +1058,39 @@ def test_fieldset_from_xarray(tdim):
                 Uxr[t, :, :, :] = t / 10.0
             coords = {"lat": lat, "lon": lon, "depth": depth, "time": time}
             dims = ("time", "depth", "lat", "lon")
+=======
+@pytest.mark.parametrize('tdim', [10, None])
+def test_fieldset_from_xarray(tdim):
+    def generate_dataset(xdim, ydim, zdim=1, tdim=1):
+        lon = np.linspace(0., 12, xdim, dtype=np.float32)
+        lat = np.linspace(0., 12, ydim, dtype=np.float32)
+        depth = np.linspace(0., 20., zdim, dtype=np.float32)
+        if tdim:
+            time = np.linspace(0., 10, tdim, dtype=np.float64)
+            Uxr = np.ones((tdim, zdim, ydim, xdim), dtype=np.float32)
+            Vxr = np.ones((tdim, zdim, ydim, xdim), dtype=np.float32)
+            for t in range(Uxr.shape[0]):
+                Uxr[t, :, :, :] = t/10.
+            coords = {'lat': lat, 'lon': lon, 'depth': depth, 'time': time}
+            dims = ('time', 'depth', 'lat', 'lon')
         else:
             Uxr = np.ones((zdim, ydim, xdim), dtype=np.float32)
             Vxr = np.ones((zdim, ydim, xdim), dtype=np.float32)
             for z in range(Uxr.shape[0]):
-                Uxr[z, :, :] = z / 2.0
-            coords = {"lat": lat, "lon": lon, "depth": depth}
-            dims = ("depth", "lat", "lon")
-        return xr.Dataset(
-            {"Uxr": xr.DataArray(Uxr, coords=coords, dims=dims), "Vxr": xr.DataArray(Vxr, coords=coords, dims=dims)}
-        )
+                Uxr[z, :, :] = z/2.
+            coords = {'lat': lat, 'lon': lon, 'depth': depth}
+            dims = ('depth', 'lat', 'lon')
+        return xr.Dataset({'Uxr': xr.DataArray(Uxr, coords=coords, dims=dims),
+                           'Vxr': xr.DataArray(Vxr, coords=coords, dims=dims)})
 
     ds = generate_dataset(3, 3, 2, tdim)
-    variables = {"U": "Uxr", "V": "Vxr"}
+    variables = {'U': 'Uxr', 'V': 'Vxr'}
     if tdim:
-        dimensions = {"lat": "lat", "lon": "lon", "depth": "depth", "time": "time"}
+        dimensions = {'lat': 'lat', 'lon': 'lon', 'depth': 'depth', 'time': 'time'}
     else:
-        dimensions = {"lat": "lat", "lon": "lon", "depth": "depth"}
-    fieldset = FieldSet.from_xarray_dataset(ds, variables, dimensions, mesh="flat")
-    assert fieldset.U.creation_log == "from_xarray_dataset"
+        dimensions = {'lat': 'lat', 'lon': 'lon', 'depth': 'depth'}
+    fieldset = FieldSet.from_xarray_dataset(ds, variables, dimensions, mesh='flat')
+    assert fieldset.U.creation_log == 'from_xarray_dataset'
 
     pset = ParticleSet(fieldset, JITParticle, 0, 0, depth=20)
 

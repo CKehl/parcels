@@ -2,6 +2,7 @@ build/*
 docs/_build/*
 docs/_downloads
 gh-pages/*
+venv/*
 lib/
 bin/
 parcels_examples
@@ -29,5 +30,6 @@ Profile.prof
 parcels.egg-info/*
 dist/parcels*.egg
 parcels/examples/particle*.png
+parcels/_version.py
 parcels/_version_setup.py
 /.pytest_cache/

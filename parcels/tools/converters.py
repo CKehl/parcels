@@ -1,5 +1,6 @@
 # flake8: noqa: E999
 import inspect
+<<<<<<< Updated upstream
 from datetime import timedelta
 from math import cos, pi
 
@@ -30,6 +31,19 @@ def convert_to_flat_array(var: npt.ArrayLike) -> npt.NDArray:
         list or numeric to convert to a one-dimensional numpy array
     """
     return np.array(var).flatten()
+=======
+from datetime import timedelta as delta
+from math import cos
+from math import pi
+import xarray as xr
+
+import cftime
+import numpy as np
+
+__all__ = ['UnitConverter', 'Geographic', 'GeographicPolar', 'GeographicSquare',
+           'GeographicPolarSquare', 'unitconverters_map', 'TimeConverter',
+           'convert_xarray_time_units']
+>>>>>>> Stashed changes
 
 
 def _get_cftime_datetimes():
@@ -259,6 +273,7 @@ class GeographicPolarSquare(UnitConverter):
         return "pow((1000. * 1.852 * 60. * cos(%s * M_PI / 180)), 2)" % y
 
 
+<<<<<<< Updated upstream
 unitconverters_map = {
     "U": GeographicPolar(),
     "V": Geographic(),
@@ -282,3 +297,24 @@ def convert_xarray_time_units(ds, time):
             "See also the tutorial at https://docs.oceanparcels.org/en/latest/examples/tutorial_timestamps.html"
         )
     ds[time] = da2[time]
+=======
+unitconverters_map = {'U': GeographicPolar(), 'V': Geographic(),
+                      'Kh_zonal': GeographicPolarSquare(),
+                      'Kh_meridional': GeographicSquare()}
+
+
+def convert_xarray_time_units(ds, time):
+    """ Fixes DataArrays that have time.Unit instead of expected time.units
+    """
+    if 'units' not in ds[time].attrs and 'Unit' in ds[time].attrs:
+        ds[time].attrs['units'] = ds[time].attrs['Unit']
+    ds2 = xr.Dataset({time: ds[time]})
+    try:
+        ds2 = xr.decode_cf(ds2)
+    except ValueError:
+        raise RuntimeError('Xarray could not convert the calendar. If you''re using from_netcdf, '
+                           'try using the timestamps keyword in the construction of your Field. '
+                           'See also the tutorial at https://nbviewer.jupyter.org/github/OceanParcels/'
+                           'parcels/blob/master/parcels/examples/tutorial_timestamps.ipynb')
+    ds[time] = ds2[time]
+>>>>>>> Stashed changes

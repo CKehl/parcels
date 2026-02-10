@@ -75,9 +75,12 @@ static inline float parcels_vonmisesvariate(float mu, float kappa)
   }
 
   s = 0.5 / kappa;
+<<<<<<< Updated upstream
   if (fabs(s) <= FLT_EPSILON * fabs(s)){
     return mu;
   }
+=======
+>>>>>>> Stashed changes
   r = s + sqrt(1.0 + s * s);
 
   do {

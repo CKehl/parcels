@@ -8,6 +8,7 @@ from glob import glob
 import dask.array as da
 import numpy as np
 
+<<<<<<< Updated upstream
 from parcels._compat import MPI
 from parcels._typing import GridIndexingType, InterpMethodOption, Mesh, TimePeriodic
 from parcels.field import DeferredArray, Field, NestedField, VectorField
@@ -18,6 +19,24 @@ from parcels.tools.converters import TimeConverter, convert_xarray_time_units
 from parcels.tools.loggers import logger
 from parcels.tools.statuscodes import TimeExtrapolationError
 from parcels.tools.warnings import FieldSetWarning
+=======
+from parcels.field import Field, DeferredArray
+from parcels.field import NestedField
+from parcels.field import SummedField
+from parcels.field import VectorField
+from parcels.grid import Grid
+from parcels.gridset import GridSet
+from parcels.tools.converters import TimeConverter, convert_xarray_time_units
+from parcels.tools.error import TimeExtrapolationError
+from parcels.tools.loggers import logger
+
+import sys
+#from memory_profiler import profile
+try:
+    from mpi4py import MPI
+except:
+    MPI = None
+>>>>>>> Stashed changes
 
 __all__ = ["FieldSet"]
 
@@ -1243,6 +1262,7 @@ class FieldSet:
         )
 
     @classmethod
+<<<<<<< Updated upstream
     def from_xarray_dataset(
         cls, ds, variables, dimensions, mesh="spherical", allow_time_extrapolation=None, time_periodic=False, **kwargs
     ):
@@ -1280,19 +1300,56 @@ class FieldSet:
             This flag overrides the allow_time_extrapolation and sets it to False
         **kwargs :
             Keyword arguments passed to the :func:`Field.from_xarray` constructor.
+=======
+    def from_xarray_dataset(cls, ds, variables, dimensions, mesh='spherical', allow_time_extrapolation=None,
+                            time_periodic=False, **kwargs):
+        """Initialises FieldSet data from xarray Datasets.
+
+        :param ds: xarray Dataset.
+               Note that the built-in Advection kernels assume that U and V are in m/s
+        :param variables: Dictionary mapping parcels variable names to data variables in the xarray Dataset.
+        :param dimensions: Dictionary mapping data dimensions (lon,
+               lat, depth, time, data) to dimensions in the xarray Dataset.
+               Note that dimensions can also be a dictionary of dictionaries if
+               dimension names are different for each variable
+               (e.g. dimensions['U'], dimensions['V'], etc).
+        :param fieldtype: Optional dictionary mapping fields to fieldtypes to be used for UnitConverter.
+               (either 'U', 'V', 'Kh_zonal', 'Kh_meridional' or None)
+        :param mesh: String indicating the type of mesh coordinates and
+               units used during velocity interpolation, see also https://nbviewer.jupyter.org/github/OceanParcels/parcels/blob/master/parcels/examples/tutorial_unitconverters.ipynb:
+
+               1. spherical (default): Lat and lon in degree, with a
+                  correction for zonal velocity U near the poles.
+               2. flat: No conversion, lat/lon are assumed to be in m.
+        :param allow_time_extrapolation: boolean whether to allow for extrapolation
+               (i.e. beyond the last available time snapshot)
+               Default is False if dimensions includes time, else True
+        :param time_periodic: To loop periodically over the time component of the Field. It is set to either False or the length of the period (either float in seconds or datetime.timedelta object). (Default: False)
+               This flag overrides the allow_time_interpolation and sets it to False
+>>>>>>> Stashed changes
         """
         fields = {}
+<<<<<<< Updated upstream
         if "creation_log" not in kwargs.keys():
             kwargs["creation_log"] = "from_xarray_dataset"
         if "time" in dimensions:
             if "units" not in ds[dimensions["time"]].attrs and "Unit" in ds[dimensions["time"]].attrs:
                 # Fix DataArrays that have time.Unit instead of expected time.units
                 convert_xarray_time_units(ds, dimensions["time"])
+=======
+        if 'creation_log' not in kwargs.keys():
+            kwargs['creation_log'] = 'from_xarray_dataset'
+        if 'time' in dimensions:
+            if 'units' not in ds[dimensions['time']].attrs and 'Unit' in ds[dimensions['time']].attrs:
+                # Fix DataArrays that have time.Unit instead of expected time.units
+                convert_xarray_time_units(ds, dimensions['time'])
+>>>>>>> Stashed changes
 
         for var, name in variables.items():
             dims = dimensions[var] if var in dimensions else dimensions
             cls.checkvaliddimensionsdict(dims)
 
+<<<<<<< Updated upstream
             fields[var] = Field.from_xarray(
                 ds[name],
                 var,
@@ -1304,6 +1361,12 @@ class FieldSet:
             )
         u = fields.pop("U", None)
         v = fields.pop("V", None)
+=======
+            fields[var] = Field.from_xarray(ds[name], var, dims, mesh=mesh, allow_time_extrapolation=allow_time_extrapolation,
+                                            time_periodic=time_periodic, **kwargs)
+        u = fields.pop('U', None)
+        v = fields.pop('V', None)
+>>>>>>> Stashed changes
         return cls(u, v, fields=fields)
 
     @classmethod
@@ -1411,7 +1474,39 @@ class FieldSet:
                 if isinstance(v, Field) and (v.name != "U") and (v.name != "V"):
                     v.write(filename)
 
+<<<<<<< Updated upstream
     def computeTimeChunk(self, time=0.0, dt=1):
+=======
+    def advancetime(self, fieldset_new):
+        """Replace oldest time on FieldSet with new FieldSet
+        :param fieldset_new: FieldSet snapshot with which the oldest time has to be replaced"""
+
+        logger.warning_once("Fieldset.advancetime() is deprecated.\n \
+                             Parcels deals automatically with loading only 3 time steps simustaneously\
+                             such that the total allocated memory remains limited.")
+
+        advance = 0
+        for gnew in fieldset_new.gridset.grids:
+            gnew.advanced = False
+
+        for fnew in fieldset_new.get_fields():
+            if isinstance(fnew, VectorField):
+                continue
+            f = getattr(self, fnew.name)
+            gnew = fnew.grid
+            if not gnew.advanced:
+                g = f.grid
+                advance2 = g.advancetime(gnew)
+                if advance2*advance < 0:
+                    raise RuntimeError("Some Fields of the Fieldset are advanced forward and other backward")
+                advance = advance2
+                gnew.advanced = True
+            f.advancetime(fnew, advance == 1)
+
+    #fp_fieldset_cTC=open("fieldset_computeTimeChunk.log",'w+')
+    #@profile(stream=fp_fieldset_cTC)
+    def computeTimeChunk(self, time, dt):
+>>>>>>> Stashed changes
         """Load a chunk of three data time steps into the FieldSet.
         This is used when FieldSet uses data imported from netcdf,
         with default option deferred_load. The loaded time steps are at or immediatly before time
@@ -1428,7 +1523,12 @@ class FieldSet:
             Default is 1.
         """
         signdt = np.sign(dt)
+<<<<<<< Updated upstream
         nextTime = np.inf if dt > 0 else -np.inf
+=======
+        nextTime = np.infty if dt > 0 else -np.infty
+        g_update_status = {}
+>>>>>>> Stashed changes
 
         for g in self.gridset.grids:
             g.update_status = "not_updated"
@@ -1440,7 +1540,9 @@ class FieldSet:
                 if time == nextTime_loc and signdt != 0:
                     raise TimeExtrapolationError(time, field=f, msg="In fset.computeTimeChunk")
             nextTime = min(nextTime, nextTime_loc) if signdt >= 0 else max(nextTime, nextTime_loc)
+            g_update_status[f.name]=f.grid.update_status
 
+        #sys.stdout.write("update status grids: {}\n".format(g_update_status))
         for f in self.get_fields():
             if isinstance(f, (VectorField, NestedField)) or not f.grid.defer_load or f.dataFiles is None:
                 continue
@@ -1465,6 +1567,7 @@ class FieldSet:
                 for tind in f.loaded_time_indices:
                     for fb in f.filebuffers:
                         if fb is not None:
+<<<<<<< Updated upstream
                             fb.close()
                         fb = None
                     data = f.computeTimeChunk(data, tind)
@@ -1482,6 +1585,30 @@ class FieldSet:
                     g.load_chunk = np.where(g.load_chunk == g.chunk_deprecated, g.chunk_not_loaded, g.load_chunk)
 
             elif g.update_status == "updated":
+=======
+                            #fb.dataset.close()
+                            fb.close()
+                        fb = None
+
+                    data = f.computeTimeChunk(data, tind)
+                data = f.rescale_and_set_minmax(data)
+                if(isinstance(f.data, DeferredArray)):
+                    f.data = DeferredArray()
+                #if(isinstance(f.data, da.core.Array)):
+                #    f.data=da.empty(f.data.shape, f.data.dtype)
+                f.data = f.reshape(data)
+                if not f.chunk_set:
+                    f.chunk_setup()
+                if len(g.load_chunk) > 0:
+                    g.load_chunk = np.where(g.load_chunk == 2, 1, g.load_chunk)
+                    g.load_chunk = np.where(g.load_chunk == 3, 0, g.load_chunk)
+                #    for block_id in range(len(g.load_chunk)):
+                #        if g.load_chunk[block_id] == 0:
+                #            f.data_chunks[block_id] = None
+                #            f.c_data_chunks[block_id] = None
+
+            elif g.update_status == 'updated':
+>>>>>>> Stashed changes
                 lib = np if isinstance(f.data, np.ndarray) else da
                 if f.gridindexingtype == "pop" and g.zdim > 1:
                     zd = g.zdim - 1
@@ -1491,6 +1618,7 @@ class FieldSet:
                     (g.tdim, zd, g.ydim - 2 * g.meridional_halo, g.xdim - 2 * g.zonal_halo), dtype=np.float32
                 )
                 if signdt >= 0:
+<<<<<<< Updated upstream
                     f.loaded_time_indices = [1]
                     if f.filebuffers[0] is not None:
                         f.filebuffers[0].close()
@@ -1503,9 +1631,27 @@ class FieldSet:
                         f.filebuffers[1].close()
                         f.filebuffers[1] = None
                     f.filebuffers[1] = f.filebuffers[0]
+=======
+                    f.loaded_time_indices = [2]
+                    if f.filebuffers[0] is not None:
+                        f.filebuffers[0].close()
+                        #f.filebuffers[0].dataset.close()
+                        f.filebuffers[0] = None
+                    f.filebuffers[:2] = f.filebuffers[1:]
+                    data = f.computeTimeChunk(data, 2)
+                else:
+                    f.loaded_time_indices = [0]
+                    if f.filebuffers[2] is not None:
+                        f.filebuffers[2].close()
+                        #f.filebuffers[2].dataset.close()
+                        f.filebuffers[2] = None
+                    f.filebuffers[1:] = f.filebuffers[:2]
+>>>>>>> Stashed changes
                     data = f.computeTimeChunk(data, 0)
+                #sys.stdout.write("Fieldset.computeTimeChunk - data.shape after loading time {}: {}\n".format(time, data.shape))
                 data = f.rescale_and_set_minmax(data)
                 if signdt >= 0:
+<<<<<<< Updated upstream
                     data = f.reshape(data)[1, :]
                     if lib is da:
                         f.data = lib.stack([f.data[1, :], data], axis=0)
@@ -1517,9 +1663,21 @@ class FieldSet:
                                 f.data[0, :] = None
                         f.data[0, :] = f.data[1, :]
                         f.data[1, :] = data
+=======
+                    data = f.reshape(data)[2:, :]
+                    #sys.stdout.write("Fieldset.computeTimeChunk - data.shape after reshaping at t={}: {}\n".format(time, data.shape))
+                    if lib is da:
+                        f.data = lib.concatenate([f.data[1:, :], data], axis=0)
+                    else:
+                        #f.data[0] = None
+                        del f.data[0, :]
+                        f.data[:2, :] = f.data[1:, :]
+                        f.data[2, :] = data
+>>>>>>> Stashed changes
                 else:
                     data = f.reshape(data)[0, :]
                     if lib is da:
+<<<<<<< Updated upstream
                         f.data = lib.stack([data, f.data[0, :]], axis=0)
                     else:
                         if not isinstance(f.data, DeferredArray):
@@ -1531,6 +1689,16 @@ class FieldSet:
                         f.data[0, :] = data
                 g.load_chunk = np.where(g.load_chunk == g.chunk_loaded_touched, g.chunk_loading_requested, g.load_chunk)
                 g.load_chunk = np.where(g.load_chunk == g.chunk_deprecated, g.chunk_not_loaded, g.load_chunk)
+=======
+                        f.data = lib.concatenate([data, f.data[:2, :]], axis=0)
+                    else:
+                        #f.data[2] = None
+                        del f.data[2, :]
+                        f.data[1:, :] = f.data[:2, :]
+                        f.data[0, :] = data
+                #sys.stdout.write("Fieldset.computeTimeChunk - Field.data.shape before updating chunk status at t={}: {}\n".format(time, f.data.shape))
+                g.load_chunk = np.where(g.load_chunk == 3, 0, g.load_chunk)
+>>>>>>> Stashed changes
                 if isinstance(f.data, da.core.Array) and len(g.load_chunk) > 0:
                     if signdt >= 0:
                         for block_id in range(len(g.load_chunk)):
@@ -1541,7 +1709,14 @@ class FieldSet:
                                     break
                                 block = f.get_block(block_id)
                                 f.data_chunks[block_id][0] = None
+<<<<<<< Updated upstream
                                 f.data_chunks[block_id][1] = np.array(f.data.blocks[(slice(2),) + block][1])
+=======
+                                f.data_chunks[block_id][:2] = f.data_chunks[block_id][1:]
+                                # == original: == #
+                                # f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2])
+                                f.data_chunks[block_id][2] = np.array(f.data.blocks[(slice(3),)+block][2], order='C')
+>>>>>>> Stashed changes
                     else:
                         for block_id in range(len(g.load_chunk)):
                             if g.load_chunk[block_id] == g.chunk_loaded_touched:
@@ -1550,8 +1725,16 @@ class FieldSet:
                                     # happens when field not called by kernel, but shares a grid with another field called by kernel
                                     break
                                 block = f.get_block(block_id)
+<<<<<<< Updated upstream
                                 f.data_chunks[block_id][1] = None
                                 f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(2),) + block][0])
+=======
+                                f.data_chunks[block_id][2] = None
+                                f.data_chunks[block_id][1:] = f.data_chunks[block_id][:2]
+                                # == original: == #
+                                # f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0])
+                                f.data_chunks[block_id][0] = np.array(f.data.blocks[(slice(3),)+block][0], order='C')
+>>>>>>> Stashed changes
         # do user-defined computations on fieldset data
         if self.compute_on_defer:
             self.compute_on_defer(self)

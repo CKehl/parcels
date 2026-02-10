@@ -12,6 +12,10 @@ from parcels.tools.loggers import logger
 
 __all__ = ["seed", "random", "uniform", "randint", "normalvariate", "expovariate", "vonmisesvariate"]
 
+<<<<<<< Updated upstream
+=======
+__all__ = ['seed', 'random', 'uniform', 'randint', 'normalvariate', 'expovariate', 'vonmisesvariate']
+>>>>>>> Stashed changes
 
 class RandomC:
     stmt_import = """#include "parcels.h"\n\n"""
@@ -50,11 +54,20 @@ extern float pcls_vonmisesvariate(float mu, float kappa){
   return parcels_vonmisesvariate(mu, kappa);
 }
 """
+<<<<<<< Updated upstream
     _lib = None
     ccode = None
     src_file = None
     lib_file = None
     log_file = None
+=======
+    ccode = stmt_import + fnct_seed
+    ccode += fnct_random + fnct_uniform + fnct_randint + fnct_normalvariate + fnct_expovariate + fnct_vonmisesvariate
+    basename = path.join(get_cache_dir(), 'parcels_random_%s' % uuid.uuid4())
+    src_file = "%s.c" % basename
+    lib_file = "%s.so" % basename
+    log_file = "%s.log" % basename
+>>>>>>> Stashed changes
 
     def __init__(self):
         self._lib = None
@@ -184,11 +197,17 @@ def expovariate(lamb):
 
 
 def vonmisesvariate(mu, kappa):
+<<<<<<< Updated upstream
     """Returns a random float of a Von Mises distribution
     with mean angle mu and concentration parameter kappa.
     """
     _assign_parcels_random_ccodeconverter()
     rnd = _parcels_random_ccodeconverter.lib.pcls_vonmisesvariate
+=======
+    """Returns a randome float of a Von Mises distribution
+    with mean angle mu and concentration parameter kappa"""
+    rnd = parcels_random.lib.pcls_vonmisesvariate
+>>>>>>> Stashed changes
     rnd.argtype = [c_float, c_float]
     rnd.restype = c_float
     return rnd(c_float(mu), c_float(kappa))

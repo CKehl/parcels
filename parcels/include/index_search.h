@@ -51,8 +51,13 @@ typedef struct
 
 typedef enum
   {
+<<<<<<< Updated upstream
     SUCCESS=0, EVALUATE=10, REPEAT=20, DELETE=30, STOPEXECUTION=40, STOPALLEXECUTION=41, ERROR=50, ERRORINTERPOLATION=51, ERROROUTOFBOUNDS=60, ERRORTHROUGHSURFACE=61, ERRORTIMEEXTRAPOLATION=70
   } StatusCode;
+=======
+    SUCCESS=0, REPEAT=1, DELETE=2, ERROR=3, ERROR_INTERPOLATION=31, ERROR_OUT_OF_BOUNDS=4, ERROR_THROUGH_SURFACE=41, ERROR_TIME_EXTRAPOLATION=5
+  } ErrorCode;
+>>>>>>> Stashed changes
 
 typedef enum
   {
@@ -294,13 +299,18 @@ static inline StatusCode search_indices_rectilinear(type_coord x, type_coord y, 
                                         z4d, ti, tdim, time, t0, t1, interp_method);
         break;
       default:
+<<<<<<< Updated upstream
         status = ERRORINTERPOLATION;
+=======
+        err = ERROR_INTERPOLATION;
+>>>>>>> Stashed changes
     }
     CHECKSTATUS(status);
   }
   else
     *zeta = 0;
 
+<<<<<<< Updated upstream
   if ( (*xsi < 0)  && (is_zero_dbl(*xsi)) )       {*xsi = 0.;}
   if ( (*xsi > 1)  && (is_close_dbl(*xsi, 1.)) )  {*xsi = 1.;}
   if ( (*eta < 0)  && (is_zero_dbl(*eta)) )       {*eta = 0.;}
@@ -311,6 +321,11 @@ static inline StatusCode search_indices_rectilinear(type_coord x, type_coord y, 
   if ( (*xsi < 0) || (*xsi > 1) ) return ERRORINTERPOLATION;
   if ( (*eta < 0) || (*eta > 1) ) return ERRORINTERPOLATION;
   if ( (*zeta < 0) || (*zeta > 1) ) return ERRORINTERPOLATION;
+=======
+  if ( (*xsi < 0) || (*xsi > 1) ) return ERROR_INTERPOLATION;
+  if ( (*eta < 0) || (*eta > 1) ) return ERROR_INTERPOLATION;
+  if ( (*zeta < 0) || (*zeta > 1) ) return ERROR_INTERPOLATION;
+>>>>>>> Stashed changes
 
   return SUCCESS;
 }
@@ -438,16 +453,26 @@ static inline StatusCode search_indices_curvilinear(type_coord x, type_coord y, 
                                         z4d, ti, tdim, time, t0, t1, interp_method);
         break;
       default:
+<<<<<<< Updated upstream
         status = ERRORINTERPOLATION;
+=======
+        err = ERROR_INTERPOLATION;
+>>>>>>> Stashed changes
     }
     CHECKSTATUS(status);
   }
   else
     *zeta = 0;
 
+<<<<<<< Updated upstream
   if ( (*xsi < 0) || (*xsi > 1) ) return ERRORINTERPOLATION;
   if ( (*eta < 0) || (*eta > 1) ) return ERRORINTERPOLATION;
   if ( (*zeta < 0) || (*zeta > 1) ) return ERRORINTERPOLATION;
+=======
+  if ( (*xsi < 0) || (*xsi > 1) ) return ERROR_INTERPOLATION;
+  if ( (*eta < 0) || (*eta > 1) ) return ERROR_INTERPOLATION;
+  if ( (*zeta < 0) || (*zeta > 1) ) return ERROR_INTERPOLATION;
+>>>>>>> Stashed changes
 
   return SUCCESS;
 }

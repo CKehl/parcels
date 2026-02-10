@@ -17,6 +17,7 @@ from time import time as ostime
 
 import numpy as np
 import numpy.ctypeslib as npct
+<<<<<<< Updated upstream
 from numpy import ndarray
 
 import parcels.rng as ParcelsRandom  # noqa
@@ -31,6 +32,27 @@ from parcels.compilation.codegenerator import KernelGenerator, LoopGenerator
 from parcels.field import Field, NestedField, VectorField
 from parcels.grid import GridType
 from parcels.tools.global_statics import get_cache_dir
+=======
+
+#from memory_profiler import profile
+try:
+    from mpi4py import MPI
+except:
+    MPI = None
+
+from parcels.codegenerator import KernelGenerator
+from parcels.codegenerator import LoopGenerator
+from parcels.compiler import get_cache_dir
+from parcels.field import Field
+from parcels.field import FieldOutOfBoundError
+from parcels.field import FieldOutOfBoundSurfaceError
+from parcels.field import NestedField
+from parcels.field import SummedField
+from parcels.field import VectorField
+from parcels.kernels.advection import AdvectionRK4_3D
+from parcels.tools.error import ErrorCode
+from parcels.tools.error import recovery_map as recovery_base_map
+>>>>>>> Stashed changes
 from parcels.tools.loggers import logger
 from parcels.tools.statuscodes import (
     FieldOutOfBoundError,
@@ -67,6 +89,7 @@ class BaseKernel(abc.ABC):
         self.delete_cfiles = delete_cfiles
         self._c_include = c_include
 
+<<<<<<< Updated upstream
         # Derive meta information from pyfunc, if not given
         self._pyfunc = None
         self.funcname = funcname or pyfunc.__name__
@@ -81,6 +104,10 @@ class BaseKernel(abc.ABC):
         self.lib_file = None
         self.log_file = None
         self.scipy_positionupdate_kernels_added = False
+=======
+DEBUG_MODE = False
+import sys
+>>>>>>> Stashed changes
 
         # Generate the kernel function and add the outer loop
         if self._ptype.uses_jit:
@@ -145,6 +172,7 @@ class BaseKernel(abc.ABC):
 class Kernel(BaseKernel):
     """Kernel object that encapsulates auto-generated code.
 
+<<<<<<< Updated upstream
     Parameters
     ----------
     fieldset : parcels.Fieldset
@@ -161,11 +189,19 @@ class Kernel(BaseKernel):
     Notes
     -----
     A Kernel is either created from a compiled <function ...> object
+=======
+    :arg fieldset: FieldSet object providing the field information
+    :arg ptype: PType object for the kernel particle
+    :param delete_cfiles: Boolean whether to delete the C-files after compilation in JIT mode (default is True)
+
+    Note: A Kernel is either created from a compiled <function ...> object
+>>>>>>> Stashed changes
     or the necessary information (funcname, funccode, funcvars) is provided.
     The py_ast argument may be derived from the code string, but for
     concatenation, the merged AST plus the new header definition is required.
     """
 
+<<<<<<< Updated upstream
     def __init__(
         self,
         fieldset,
@@ -189,6 +225,14 @@ class Kernel(BaseKernel):
             c_include=c_include,
             delete_cfiles=delete_cfiles,
         )
+=======
+    def __init__(self, fieldset, ptype, pyfunc=None, funcname=None,
+                 funccode=None, py_ast=None, funcvars=None, c_include="", delete_cfiles=True):
+        self.fieldset = fieldset
+        self.ptype = ptype
+        self._lib = None
+        self.delete_cfiles = delete_cfiles
+>>>>>>> Stashed changes
 
         # Derive meta information from pyfunc, if not given
         self.check_fieldsets_in_kernels(pyfunc)
@@ -277,6 +321,7 @@ class Kernel(BaseKernel):
         # Clean-up the in-memory dynamic linked libraries.
         # This is not really necessary, as these programs are not that large, but with the new random
         # naming scheme which is required on Windows OS'es to deal with updates to a Parcels' kernel.
+<<<<<<< Updated upstream
         try:
             self.remove_lib()
         except:
@@ -302,6 +347,14 @@ class Kernel(BaseKernel):
     @property
     def c_include(self):
         return self._c_include
+=======
+        if self._lib is not None:
+            _ctypes.FreeLibrary(self._lib._handle) if platform == 'win32' else _ctypes.dlclose(self._lib._handle)
+            del self._lib
+            self._lib = None
+            if path.isfile(self.lib_file) and self.delete_cfiles:
+                [remove(s) for s in [self.src_file, self.lib_file, self.log_file]]
+>>>>>>> Stashed changes
 
     @property
     def _cache_key(self):
@@ -489,6 +542,7 @@ class Kernel(BaseKernel):
         self._lib = npct.load_library(self.lib_file, ".")
         self._function = self._lib.particle_loop
 
+<<<<<<< Updated upstream
     def merge(self, kernel, kclass):
         funcname = self.funcname + kernel.funcname
         func_ast = None
@@ -608,7 +662,44 @@ class Kernel(BaseKernel):
     def execute_jit(self, pset, endtime, dt):
         """Invokes JIT engine to perform the core update loop."""
         self.load_fieldset_jit(pset)
+=======
+    @profile
+    def execute_jit(self, pset, endtime, dt):
+        """Invokes JIT engine to perform the core update loop"""
+        if len(pset.particles) > 0:
+            assert pset.fieldset.gridset.size == len(pset.particles[0].xi), \
+                'FieldSet has different amount of grids than Particle.xi. Have you added Fields after creating the ParticleSet?'
+        for g in pset.fieldset.gridset.grids:
+            g.cstruct = None  # This force to point newly the grids from Python to C
+        # Make a copy of the transposed array to enforce
+        # C-contiguous memory layout for JIT mode.
+        for f in pset.fieldset.get_fields():
+            if type(f) in [VectorField, NestedField, SummedField]:
+                continue
+            if f in self.field_args.values():
+                f.chunk_data()
+            else:
+                for block_id in range(len(f.data_chunks)):
+                    #del f.data_chunks[block_id]
+                    f.data_chunks[block_id] = None
+                    f.c_data_chunks[block_id] = None
 
+        for g in pset.fieldset.gridset.grids:
+            g.load_chunk = np.where(g.load_chunk == 1, 2, g.load_chunk)
+            if len(g.load_chunk) > 0:  # not the case if a field in not called in the kernel
+                if not g.load_chunk.flags.c_contiguous:
+                    g.load_chunk = g.load_chunk.copy()
+            if not g.depth.flags.c_contiguous:
+                g.depth = g.depth.copy()
+            if not g.lon.flags.c_contiguous:
+                g.lon = g.lon.copy()
+            if not g.lat.flags.c_contiguous:
+                g.lat = g.lat.copy()
+>>>>>>> Stashed changes
+
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
         fargs = [byref(f.ctypes_struct) for f in self.field_args.values()]
         fargs += [c_double(f) for f in self.const_args.values()]
         particle_data = byref(pset.ctypes_struct)
@@ -620,6 +711,7 @@ class Kernel(BaseKernel):
             for f in self.fieldset.get_fields():
                 if isinstance(f, (VectorField, NestedField)):
                     continue
+<<<<<<< Updated upstream
                 f.data = np.array(f.data)
 
         if not self.scipy_positionupdate_kernels_added:
@@ -646,6 +738,49 @@ class Kernel(BaseKernel):
             for g in pset.fieldset.gridset.grids:
                 if len(g.load_chunk) > g.chunk_not_loaded:  # not the case if a field in not called in the kernel
                     g.load_chunk = np.where(g.load_chunk == g.chunk_loaded_touched, g.chunk_deprecated, g.load_chunk)
+=======
+                else:
+                    # Try again without time update
+                    for var in ptype.variables:
+                        if var.name not in ['dt', 'state']:
+                            setattr(p, var.name, p_var_back[var.name])
+                    dt_pos = min(abs(p.dt), abs(endtime - p.time))
+                    break
+
+    @profile
+    def execute(self, pset, endtime, dt, recovery=None, output_file=None):
+        """Execute this Kernel over a ParticleSet for several timesteps"""
+
+        @profile
+        def remove_deleted(pset, verbose=False):
+            """Utility to remove all particles that signalled deletion"""
+            # ====================================== #
+            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+            # ====================================== #
+            indices = [i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]]
+            if len(indices) > 0 and output_file is not None:
+                output_file.write(pset[indices], endtime, deleted_only=True)
+            if DEBUG_MODE and len(indices) > 0 and verbose:
+                sys.stdout.write("|P| before delete: {}\n".format(len(pset.particles)))
+            # ============================= #
+            # ==== EXPENSIVE OPERATION ==== #
+            # ============================= #
+            pset.remove(indices)
+            if DEBUG_MODE and len(indices) > 0 and verbose:
+                sys.stdout.write("|P| after delete: {}\n".format(len(pset.particles)))
+            return pset
+
+        if recovery is None:
+            recovery = {}
+        elif ErrorCode.ErrorOutOfBounds in recovery and ErrorCode.ErrorThroughSurface not in recovery:
+            recovery[ErrorCode.ErrorThroughSurface] = recovery[ErrorCode.ErrorOutOfBounds]
+        recovery_map = recovery_base_map.copy()
+        recovery_map.update(recovery)
+
+        for g in pset.fieldset.gridset.grids:
+            if len(g.load_chunk) > 0:  # not the case if a field in not called in the kernel
+                g.load_chunk = np.where(g.load_chunk == 2, 3, g.load_chunk)
+>>>>>>> Stashed changes
 
         # Execute the kernel over the particle set
         if self.ptype.uses_jit:
@@ -657,6 +792,7 @@ class Kernel(BaseKernel):
         self.remove_deleted(pset)
 
         # Identify particles that threw errors
+<<<<<<< Updated upstream
         n_error = pset.num_error_particles
 
         while n_error > 0:
@@ -686,9 +822,38 @@ class Kernel(BaseKernel):
                         stacklevel=2,
                     )
                     p.delete()
+=======
+        # ====================================== #
+        # ==== EXPENSIVE LIST COMPREHENSION ==== #
+        # ====================================== #
+        error_particles = [p for p in pset.particles if p.state != ErrorCode.Success]
+
+        error_loop_iter = 0
+        while len(error_particles) > 0:
+            # Apply recovery kernel
+            for p in error_particles:
+                if p.state == ErrorCode.Repeat:
+                    p.state = ErrorCode.Success
+                else:
+                    if p.state in recovery_map:
+                        recovery_kernel = recovery_map[p.state]
+                        p.state = ErrorCode.Success
+                        recovery_kernel(p, self.fieldset, p.time)
+                    else:
+                        if DEBUG_MODE:
+                            sys.stdout.write("Error: loop={},  p.state={}, recovery_map: {}, age: {}, agetime: {}\n".format(error_loop_iter, p.state,recovery_map, p.age, p.agetime))
+                        p.delete()
+
+            if DEBUG_MODE:
+                before_len = len(pset.particles)
+>>>>>>> Stashed changes
 
             # Remove all particles that signalled deletion
             self.remove_deleted(pset)  # Generalizable version!
+
+            if DEBUG_MODE:
+                after_len = len(pset.particles)
+                remaining_delete_indices = len([i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]])
 
             # Execute core loop again to continue interrupted particles
             if self.ptype.uses_jit:
@@ -696,6 +861,7 @@ class Kernel(BaseKernel):
             else:
                 self.execute_python(pset, endtime, dt)
 
+<<<<<<< Updated upstream
             n_error = pset.num_error_particles
 
     def evaluate_particle(self, p, endtime):
@@ -730,6 +896,36 @@ class Kernel(BaseKernel):
                     p.state = StatusCode.Evaluate
             else:
                 p.state = res
+=======
+            if DEBUG_MODE:
+                recalc_delete_indices = len([i for i, p in enumerate(pset.particles) if p.state in [ErrorCode.Delete]])
+                if before_len != after_len:
+                    sys.stdout.write("removed particles in main: {}; remaining delete particles: {}\n".format(before_len-after_len, remaining_delete_indices))
+                if recalc_delete_indices > 0 or remaining_delete_indices > 0:
+                    sys.stdout.write("remaining delete particles after delete(): {}; new delete particles after execute(): {}\n".format(remaining_delete_indices, recalc_delete_indices))
+
+            # ====================================== #
+            # ==== EXPENSIVE LIST COMPREHENSION ==== #
+            # ====================================== #
+            error_particles = [p for p in pset.particles if p.state != ErrorCode.Success]
+            error_loop_iter += 1
+
+    def merge(self, kernel):
+        funcname = self.funcname + kernel.funcname
+        func_ast = FunctionDef(name=funcname, args=self.py_ast.args,
+                               body=self.py_ast.body + kernel.py_ast.body,
+                               decorator_list=[], lineno=1, col_offset=0)
+        delete_cfiles = self.delete_cfiles and kernel.delete_cfiles
+        return Kernel(self.fieldset, self.ptype, pyfunc=None,
+                      funcname=funcname, funccode=self.funccode + kernel.funccode,
+                      py_ast=func_ast, funcvars=self.funcvars + kernel.funcvars,
+                      delete_cfiles=delete_cfiles)
+
+    def __add__(self, kernel):
+        if not isinstance(kernel, Kernel):
+            kernel = Kernel(self.fieldset, self.ptype, pyfunc=kernel)
+        return self.merge(kernel)
+>>>>>>> Stashed changes
 
             p.dt = pre_dt
         return p

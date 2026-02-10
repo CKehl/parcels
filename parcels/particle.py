@@ -9,6 +9,7 @@ __all__ = ["ScipyParticle", "JITParticle", "Variable", "ScipyInteractionParticle
 
 indicators_64bit = [np.float64, np.uint64, np.int64, c_void_p]
 
+indicators_64bit = [np.float64, np.int64, c_void_p]
 
 class Variable:
     """Descriptor class that delegates data access to particle data.
@@ -51,7 +52,13 @@ class Variable:
         return f"PVar<{self.name}|{self.dtype}>"
 
     def is64bit(self):
+<<<<<<< Updated upstream
         """Check whether variable is 64-bit."""
+=======
+        """Check whether variable is 64-bit"""
+        #return True if self.dtype == np.float64 or self.dtype == np.int64 or self.dtype == c_void_p else False
+        #return True if self.dtype in [np.float64, np.int64, c_void_p] else False
+>>>>>>> Stashed changes
         return True if self.dtype in indicators_64bit else False
 
 
@@ -64,6 +71,7 @@ class ParticleType:
         Optional list of (name, dtype) tuples for custom variables
     """
 
+    @profile
     def __init__(self, pclass):
         if not isinstance(pclass, type):
             raise TypeError("Class object required to derive ParticleType")
@@ -125,7 +133,47 @@ class ParticleType:
         # Developer note: other dtypes (mostly 2-byte ones) are not supported now
         # because implementing and aligning them in cgen.GenerableStruct is a
         # major headache. Perhaps in a later stage
+<<<<<<< Updated upstream
         return [np.int32, np.uint32, np.int64, np.uint64, np.float32, np.double, np.float64, c_void_p]
+=======
+        return [np.int32, np.int64, np.float32, np.double, np.float64, c_void_p]
+
+
+class _Particle(object):
+    """Private base class for all particle types"""
+    lastID = 0  # class-level variable keeping track of last Particle ID used
+
+    @profile
+    def __init__(self):
+        ptype = self.getPType()
+        # Explicit initialisation of all particle variables
+        for v in ptype.variables:
+            if isinstance(v.initial, attrgetter):
+                initial = v.initial(self)
+            elif isinstance(v.initial, Field):
+                lon = self.getInitialValue(ptype, name='lon')
+                lat = self.getInitialValue(ptype, name='lat')
+                depth = self.getInitialValue(ptype, name='depth')
+                time = self.getInitialValue(ptype, name='time')
+                if time is None:
+                    raise RuntimeError('Cannot initialise a Variable with a Field if no time provided. '
+                                       'Add a "time=" to ParticleSet construction')
+                v.initial.fieldset.computeTimeChunk(time, 0)
+                initial = v.initial[time, depth, lat, lon]
+                logger.warning_once("Particle initialisation from field can be very slow as it is computed in scipy mode.")
+            else:
+                initial = v.initial
+            # Enforce type of initial value
+            if v.dtype != c_void_p:
+                setattr(self, v.name, v.dtype(initial))
+
+        # Placeholder for explicit error handling
+        self.exception = None
+
+    @classmethod
+    def getPType(cls):
+        return ParticleType(cls)
+>>>>>>> Stashed changes
 
 
 class ScipyParticle:
@@ -252,6 +300,9 @@ class ScipyParticle:
     def getPType(cls):
         return ParticleType(cls)
 
+    def reset_state(self):
+        self.state = ErrorCode.Success
+
     @classmethod
     def set_lonlatdepth_dtype(cls, dtype):
         cls.lon.dtype = dtype
@@ -265,10 +316,15 @@ class ScipyParticle:
     def setLastID(cls, offset):
         ScipyParticle.lastID = offset
 
+<<<<<<< Updated upstream
 
 ScipyInteractionParticle = ScipyParticle.add_variables(
     [Variable("vert_dist", dtype=np.float32), Variable("horiz_dist", dtype=np.float32)]
 )
+=======
+class JITParticle(ScipyParticle):
+    """Particle class for JIT-based (Just-In-Time) Particle objects
+>>>>>>> Stashed changes
 
 
 class JITParticle(ScipyParticle):
@@ -295,13 +351,28 @@ class JITParticle(ScipyParticle):
     Users should use JITParticles for faster advection computation.
     """
 
+<<<<<<< Updated upstream
+=======
+    cxi = Variable('cxi', dtype=np.dtype(c_void_p), to_write=False)
+    cyi = Variable('cyi', dtype=np.dtype(c_void_p), to_write=False)
+    czi = Variable('czi', dtype=np.dtype(c_void_p), to_write=False)
+    cti = Variable('cti', dtype=np.dtype(c_void_p), to_write=False)
+
+    @profile
+>>>>>>> Stashed changes
     def __init__(self, *args, **kwargs):
         self._cptr = kwargs.pop("cptr", None)
         if self._cptr is None:
             # Allocate data for a single particle
             ptype = self.getPType()
+            # here, np.empty is potentially hazardous - the pointer should always be initialized to 0 (unless data is set)
             self._cptr = np.empty(1, dtype=ptype.dtype)[0]
+<<<<<<< Updated upstream
         super().__init__(*args, **kwargs)
+=======
+            self._cptr = np.zeros(1, dtype=ptype.dtype)[0]
+        super(JITParticle, self).__init__(*args, **kwargs)
+>>>>>>> Stashed changes
 
     def __del__(self):
         super().__del__()

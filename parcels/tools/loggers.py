@@ -1,4 +1,27 @@
+<<<<<<< Updated upstream
 """Script to create a `logger` for Parcels."""
+=======
+"""Script to create a `logger` for Parcels"""
+import logging
+
+__all__ = ['logger']
+
+warning_once_level = 25
+info_once_level = 26
+
+
+class DuplicateFilter(object):
+    """Utility class to prevent warning_once warnings from being
+    displayed more than once"""
+    def __init__(self):
+        self.msgs = set()
+
+    def filter(self, record):
+        rv = record.msg not in self.msgs
+        if record.levelno in [warning_once_level, info_once_level]:
+            self.msgs.add(record.msg)
+        return rv
+>>>>>>> Stashed changes
 
 import logging
 import sys
@@ -6,8 +29,26 @@ import sys
 __all__ = ["logger"]
 
 
+def info_once(self, message, *args, **kws):
+    """Custom logging level for info that need to be displayed only once"""
+    if self.isEnabledFor(info_once_level):
+        self._log(info_once_level, message, args, **kws)
+
+
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(logging.Formatter(fmt="%(levelname)s: %(message)s"))
 logger.addHandler(handler)
+<<<<<<< Updated upstream
+=======
+
+logging.addLevelName(warning_once_level, "WARNING")
+logging.Logger.warning_once = warning_once
+
+logging.addLevelName(info_once_level, "INFO")
+logging.Logger.info_once = info_once
+
+dup_filter = DuplicateFilter()
+logger.addFilter(dup_filter)
+>>>>>>> Stashed changes
 logger.setLevel(10)
